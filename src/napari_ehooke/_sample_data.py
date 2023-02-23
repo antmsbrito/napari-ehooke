@@ -1,21 +1,16 @@
 """
-This module is an example of a barebones sample data provider for napari.
-
-It implements the "sample data" specification.
-see: https://napari.org/stable/plugins/guides.html?#sample-data
-
-Replace code below according to your needs.
+TODO
 """
 from __future__ import annotations
 
 import numpy
+from skimage.io import imread
 
+def phase_example():
+    return [(imread("https://github.com/antmsbrito/napari-ehooke/raw/main/docs/test_phase.tif",{"name":"Example S.aureus phase contrast"}, "image")),]
 
-def make_sample_data():
-    """Generates an image"""
-    # Return list of tuples
-    # [(data1, add_image_kwargs1), (data2, add_image_kwargs2)]
-    # Check the documentation for more information about the
-    # add_image_kwargs
-    # https://napari.org/stable/api/napari.Viewer.html#napari.Viewer.add_image
-    return [(numpy.random.rand(512, 512), {})]
+def membrane_example():
+    return [(imread("https://github.com/antmsbrito/napari-ehooke/raw/main/docs/test_membrane.tif",{"name":"Example S.aureus labeled with membrane dye"}, "image")),]
+
+def dna_example():
+    return [(imread("https://github.com/antmsbrito/napari-ehooke/raw/main/docs/test_dna.tif",{"name":"Example S.aureus labeled with DNA dye"}, "image")),]
