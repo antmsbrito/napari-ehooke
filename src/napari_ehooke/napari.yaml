@@ -2,47 +2,28 @@ name: napari-ehooke
 display_name: eHooke
 contributions:
   commands:
-    - id: napari-ehooke.get_reader
-      python_name: napari_ehooke._reader:napari_get_reader
-      title: Open data with eHooke
-    - id: napari-ehooke.write_multiple
-      python_name: napari_ehooke._writer:write_multiple
-      title: Save multi-layer data with eHooke
-    - id: napari-ehooke.write_single_image
-      python_name: napari_ehooke._writer:write_single_image
-      title: Save image data with eHooke
-    - id: napari-ehooke.make_sample_data
-      python_name: napari_ehooke._sample_data:make_sample_data
-      title: Load sample data from eHooke
-    - id: napari-ehooke.make_qwidget
-      python_name: napari_ehooke._widget:ExampleQWidget
-      title: Make example QWidget
-    - id: napari-ehooke.make_magic_widget
-      python_name: napari_ehooke._widget:example_magic_widget
-      title: Make example magic widget
-    - id: napari-ehooke.make_func_widget
-      python_name: napari_ehooke._widget:example_function_widget
-      title: Make example function widget
-  readers:
-    - command: napari-ehooke.get_reader
-      accepts_directories: false
-      filename_patterns: ['*.npy']
-  writers:
-    - command: napari-ehooke.write_multiple
-      layer_types: ['image*','labels*']
-      filename_extensions: []
-    - command: napari-ehooke.write_single_image
-      layer_types: ['image']
-      filename_extensions: ['.npy']
+    - id: napari-ehooke.phase_example
+      python_name: napari_ehooke._sample_data:phase_example
+      title: Load phase contrast S.aureus sample data 
+    - id: napari-ehooke.membrane_example
+      python_name: napari_ehooke._sample_data:membrane_example
+      title: Load membrane dye S.aureus sample data
+    - id: napari-ehooke.dna_example
+      python_name: napari_ehooke._sample_data:dna_example
+      title: Load DNA dye S.aureus sample data 
+    - id: napari-ehooke.Segmentation
+      python_name: napari_ehooke._widget:Segmentation
+      title: Segmentation
   sample_data:
-    - command: napari-ehooke.make_sample_data
-      display_name: eHooke
+    - command: napari-ehooke.phase_example
+      display_name: Phase contrast S. aureus
       key: unique_id.1
+    - command: napari-ehooke.membrane_example
+      display_name: Membrane dye S.aureus
+      key: unique_id.2
+    - command: napari-ehooke.dna_example
+      display_name: DNA dye S.aureus
+      key: unique_id.3
   widgets:
-    - command: napari-ehooke.make_qwidget
-      display_name: Example QWidget
-    - command: napari-ehooke.make_magic_widget
-      display_name: Example Magic Widget
-    - command: napari-ehooke.make_func_widget
-      autogenerate: true
-      display_name: Example Function Widget
+    - command: napari-ehooke.Segmentation
+      display_name: Segmentation
