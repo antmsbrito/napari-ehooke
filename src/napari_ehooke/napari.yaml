@@ -14,6 +14,9 @@ contributions:
     - id: napari-ehooke.compute_mask
       python_name: napari_ehooke._computemask:compute_mask
       title: Compute base mask
+    - id: napari-ehooke.compute_features
+      python_name: napari_ehooke._computefeatures:compute_features
+      title: Compute features
   sample_data:
     - command: napari-ehooke.phase_example
       display_name: Phase contrast S. aureus
@@ -27,3 +30,5 @@ contributions:
   widgets:
     - command: napari-ehooke.compute_mask
       display_name: Compute base mask
+    - command: napari-ehooke.compute_features
+      display_name: Compute features
