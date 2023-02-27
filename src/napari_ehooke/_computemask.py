@@ -21,7 +21,7 @@ def compute_mask(Base:"napari.types.ImageData",Fluor:"napari.types.ImageData",al
     """
     TODO    
     """
-
+    # TODO MOVE ALL LOGIC TO EHOOKE SUBFOLDER
     if algorithm == "Isodata":
 
         mask = Base > threshold_isodata(Base)
