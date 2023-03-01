@@ -1,122 +1,72 @@
-"""Module containg the classes needed for the computation of each
-cell, their stats and the selection/filterion of the computed cells.
-Contains a class Cell that works as the template for each cell object
-and a CellManager class that controls the different steps of the cell
-processing."""
+"""TODO"""
 
-from collections import OrderedDict
+import math
+from functools import partial
+
 import numpy as np
-import matplotlib as plt
 
-from copy import deepcopy
-from skimage.draw import line
-from skimage.measure import label, regionprops
+from skimage.measure import regionprops_table,label
 from skimage.filters import threshold_isodata
 from skimage.util import img_as_float, img_as_int
-from skimage import morphology, color, exposure
+from skimage.draw import line
+from skimage import morphology
 
+from .cellprocessing import rotation_matrices, bound_rectangle, bounded_point
 
-class Cell(object):
+class Cell:
     """Template for each cell object."""
 
-    def __init__(self, cell_id):
-        self.label = cell_id
+    def __init__(self, regionmask, intensity, properties,params):
+    
+        self.cell_mask = regionmask
+        self.fluor = intensity
+        self.params = params
 
-        self.marked_as_noise = "No"
+        self.bbox = properties.bbox
 
-        self.box = None
-        self.box_margin = 5
+        y0, x0 = properties.centroid
 
-        self.outline = []
-
-        self.cell_mask = None
-        self.perim_mask = None
-        self.sept_mask = None
-        self.cyto_mask = None
-        self.membsept_mask = None
-
-
-        self.stats = OrderedDict([("Area", 0),
-                                  ("Perimeter", 0),
-                                  ("Orientation", 0),
-                                  ("Length", 0),
-                                  ("Width", 0),
-                                  ("Eccentricity", 0),
-                                  ("Irregularity", 0),
-                                  ("Baseline", 0),
-                                  ("Cell Median", 0),
-                                  ("Membrane Median", 0),
-                                  ("Septum Median", 0),
-                                  ("Cytoplasm Median", 0),
-                                  ("Fluor Ratio", 0),
-                                  ("Fluor Ratio 75%", 0),
-                                  ("Fluor Ratio 25%", 0),
-                                  ("Fluor Ratio 10%", 0),
-                                  ("Cell Cycle Phase", 0)])
-
-        self.selection_state = 1
-
-    def clean_cell(self):
-        """Resets the cell to an empty instance.
-        Can be used to mark the cell to discard"""
-        self.label = 0
-
-        self.marked_as_noise = "No"
-
-        self.box = None
-        self.box_margin = 5
-
-        self.outline = []
+        x1 = x0 + math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
+        y1 = y0 - math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
+        x2 = x0 - math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
+        y2 = y0 + math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
+        self.long_axis = x1,y1,x2,y2
         
-        self.cell_mask = None
+        x1 = x0 - math.sin(properties.orientation) * 0.5 * properties.axis_major_length
+        y1 = y0 - math.cos(properties.orientation) * 0.5 * properties.axis_major_length
+        x2 = x0 + math.sin(properties.orientation) * 0.5 * properties.axis_major_length
+        y2 = y0 + math.cos(properties.orientation) * 0.5 * properties.axis_major_length
+        self.short_axis = x1,y1,x2,y2
+
         self.perim_mask = None
         self.sept_mask = None
         self.cyto_mask = None
         self.membsept_mask = None
 
+        self.stats = dict([("Baseline", 0),
+                           ("Cell Median", 0),
+                           ("Membrane Median", 0),
+                           ("Septum Median", 0),
+                           ("Cytoplasm Median", 0),
+                           ("Fluor Ratio", 0),
+                           ("Fluor Ratio 75%", 0),
+                           ("Fluor Ratio 25%", 0),
+                           ("Fluor Ratio 10%", 0)])
+        self.box_margin = 5
 
-        self.stats = OrderedDict([("Area", 0),
-                                  ("Perimeter", 0),
-                                  ("Orientation", 0),
-                                  ("Length", 0),
-                                  ("Width", 0),
-                                  ("Eccentricity", 0),
-                                  ("Irregularity", 0),
-                                  ("Baseline", 0),
-                                  ("Cell Median", 0),
-                                  ("Membrane Median", 0),
-                                  ("Septum Median", 0),
-                                  ("Cytoplasm Median", 0),
-                                  ("Fluor Ratio", 0),
-                                  ("Fluor Ratio 75%", 0),
-                                  ("Fluor Ratio 25%", 0),
-                                  ("Fluor Ratio 10%", 0),
-                                  ("Cell Cycle Phase", 0)])
-
-        self.selection_state = 1
-
-    def fluor_box(self, fluor):
-        """ returns box of flurescence from fluor image """
+    def image_box(self, image):
+        """ returns box """
 
         x0, y0, x1, y1 = self.box
         try:
-            return fluor[x0:x1 + 1, y0:y1 + 1]
+            return image[x0:x1 + 1, y0:y1 + 1]
         except TypeError:
             return None
 
-    def compute_cell_mask(self):
-        x0, y0, x1, y1 = self.box
-        mask = np.zeros((x1 - x0 + 1, y1 - y0 + 1))
-        for lin in self.lines:
-            y, st, en = lin
-            mask[st - x0:en - x0 + 1, y - y0] = 1.0
-        return mask
-
     def compute_perim_mask(self, mask, thick):
         """returns mask for perimeter
-        needs cell mask
+            needs cell mask
         """
-        # create mask
 
         eroded = morphology.binary_erosion(mask, np.ones(
             (thick * 2 - 1, thick - 1))).astype(float)
@@ -124,13 +74,13 @@ class Cell(object):
 
         return perim
 
-    def compute_sept_mask(self, mask, thick, septum_base, septum_opt, algorithm):
+    def compute_sept_mask(self, mask, thick, algorithm):
         """ returns mask for axis.
         needs cell mask
         """
 
         if algorithm == "Isodata":
-            return self.compute_sept_isodata(mask, thick, septum_base, septum_opt)
+            return self.compute_sept_isodata(mask, thick)
 
         elif algorithm == "Box":
             return self.compute_sept_box(mask, thick)
@@ -138,14 +88,14 @@ class Cell(object):
         else:
             print("Not a a valid algorithm")
 
-    def compute_opensept_mask(self, mask, thick, septum_base, septum_opt, algorithm):
-        """ returns mask for axis.
+    def compute_opensept_mask(self, mask, thick, algorithm):
+        """ 
+        returns mask for axis.
         needs cell mask
         """
 
         if algorithm == "Isodata":
-            return self.compute_opensept_isodata(mask, thick, septum_base, septum_opt)
-
+            return self.compute_opensept_isodata(mask, thick)
         elif algorithm == "Box":
             return self.compute_sept_box(mask, thick)
 
@@ -156,8 +106,7 @@ class Cell(object):
         """Method used to create the cell sept_mask using the threshold_isodata
         to separate the cytoplasm from the septum"""
         cell_mask = mask
-
-        fluor_box = self.fluor
+        fluor_box = self.image_box(self.fluor)
         perim_mask = self.compute_perim_mask(cell_mask, thick)
         inner_mask = cell_mask - perim_mask
         inner_fluor = (inner_mask > 0) * fluor_box
@@ -181,7 +130,7 @@ class Cell(object):
         """Method used to create the cell sept_mask using the threshold_isodata
         to separate the cytoplasm from the septum"""
         cell_mask = mask
-        fluor_box = self.fluor
+        fluor_box = self.image_box(self.fluor)
         perim_mask = self.compute_perim_mask(cell_mask, thick)
         inner_mask = cell_mask - perim_mask
         inner_fluor = (inner_mask > 0) * fluor_box
@@ -195,7 +144,7 @@ class Cell(object):
         for l in range(np.max(label_matrix)):
             label_sums.append(np.sum(img_as_float(label_matrix == l + 1)))
 
-        print(label_sums)
+        # print(label_sums)
 
         sorted_label_sums = sorted(label_sums)
 
@@ -280,7 +229,7 @@ class Cell(object):
         return outline
 
     def compute_sept_box_fix(self, outline, maskshape):
-        """Method used to create a box aroung the septum, so that the short
+        """Method used to create a box around the septum, so that the short
         axis of this box can be used to choose the pixels of the membrane
         mask that need to be removed"""
         points = np.asarray(outline)  # in two columns, x, y
@@ -306,14 +255,14 @@ class Cell(object):
         septum_box = self.compute_sept_box_fix(septum_outline, maskshape)
 
         # compute axis of the septum
-        rotations = cp.rotation_matrices(5)
+        rotations = rotation_matrices(5)
         points = np.asarray(septum_outline)  # in two columns, x, y
         width = len(points) + 1
 
         # no need to do more rotations, due to symmetry
         for rix in range(int(len(rotations) / 2) + 1):
             r = rotations[rix]
-            nx0, ny0, nx1, ny1, nwidth = cp.bound_rectangle(
+            nx0, ny0, nx1, ny1, nwidth = bound_rectangle(
                 np.asarray(np.dot(points, r)))
 
             if nwidth < width:
@@ -339,10 +288,10 @@ class Cell(object):
 
         # check if axis fall outside area due to rounding errors
         bx0, by0, bx1, by1 = septum_box
-        short[0] = cp.bounded_point(bx0, bx1, by0, by1, short[0])
-        short[1] = cp.bounded_point(bx0, bx1, by0, by1, short[1])
-        long[0] = cp.bounded_point(bx0, bx1, by0, by1, long[0])
-        long[1] = cp.bounded_point(bx0, bx1, by0, by1, long[1])
+        short[0] = bounded_point(bx0, bx1, by0, by1, short[0])
+        short[1] = bounded_point(bx0, bx1, by0, by1, short[1])
+        long[0] = bounded_point(bx0, bx1, by0, by1, long[0])
+        long[1] = bounded_point(bx0, bx1, by0, by1, long[1])
 
         length = np.linalg.norm(long[1] - long[0])
         width = np.linalg.norm(short[1] - short[0])
@@ -441,67 +390,60 @@ class Cell(object):
 
     def recursive_compute_sept(self, cell_mask, inner_mask_thickness,algorithm):
         try:
-            self.sept_mask = self.compute_sept_mask(cell_mask, inner_mask_thickness, algorithm)
+            self.sept_mask = self.compute_sept_mask(cell_mask,inner_mask_thickness,algorithm)
         except IndexError:
             try:
                 self.recursive_compute_sept(cell_mask, inner_mask_thickness - 1, algorithm)
             except RuntimeError:
                 self.recursive_compute_sept(cell_mask, inner_mask_thickness - 1, "Box")
 
-    def recursive_compute_opensept(self, cell_mask, inner_mask_thickness, algorithm):
+    def recursive_compute_opensept(self, cell_mask, inner_mask_thickness,algorithm):
         try:
-            self.sept_mask = self.compute_opensept_mask(cell_mask, inner_mask_thickness, algorithm)
+            self.sept_mask = self.compute_opensept_mask(cell_mask,inner_mask_thickness,algorithm)
         except IndexError:
             try:
-                self.recursive_compute_opensept(cell_mask, inner_mask_thickness - 1, algorithm)
+                self.recursive_compute_opensept(cell_mask, inner_mask_thickness - 1,algorithm)
             except RuntimeError:
                 self.recursive_compute_opensept(cell_mask, inner_mask_thickness - 1, "Box")
 
-    def compute_regions(self, params, fluor_image):
+    def compute_regions(self, params):
         """Computes each different region of the cell (whole cell, membrane,
         septum, cytoplasm) and creates their respectives masks."""
 
-        self.fluor = self.fluor_box(fluor_image)
-        self.cell_mask = self.compute_cell_mask()
+        fluor = self.image_box(self.fluor)
+        cell_mask = self.image_box(self.cell_mask)
 
         if params.find_septum:
-            self.recursive_compute_sept(self.cell_mask, params["inner_mask_thickness"],params["septum_algorithm"])
+            self.recursive_compute_sept(cell_mask,params["inner_mask_thickness"],params["septum_algorithm"])
 
-            if params["septum_algorithm"] == "Isodata":
-
-                self.perim_mask = self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"])
+            if params.septum_algorithm == "Isodata":
+                self.perim_mask = self.compute_perim_mask(cell_mask, params["inner_mask_thickness"])
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
-                linmask = self.remove_sept_from_membrane(fluor_image.shape)
-                self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0 
+                linmask = self.remove_sept_from_membrane(self.fluor.shape)
+                self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
                 if linmask is not None:
                     old_membrane = self.perim_mask
                     self.perim_mask = (old_membrane - linmask) > 0
-
             else:
-
                 self.perim_mask = (self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"]) - self.sept_mask) > 0
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
-
         elif params.find_openseptum:
-            self.recursive_compute_opensept(self.cell_mask, params["inner_mask_thickness"], params["septum_algorithm"])
+            self.recursive_compute_opensept(self.cell_mask,params["inner_mask_thickness"],params["septum_algorithm"])
 
             if params.septum_algorithm == "Isodata":
-                self.perim_mask = self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"])
-                self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
-                linmask = self.remove_sept_from_membrane(fluor_image.shape)
-                self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
+                self.perim_mask = self.compute_perim_mask(self.cell_mask,params["inner_mask_thickness"])
 
+                self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
+                linmask = self.remove_sept_from_membrane(self.fluor.shape)
+                self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
                 if linmask is not None:
                     old_membrane = self.perim_mask
                     self.perim_mask = (old_membrane - linmask) > 0
-
             else:
-
-                self.perim_mask = (self.compute_perim_mask(self.cell_mask,params["inner_mask_thickness"]) - self.sept_mask) > 0
+                self.perim_mask = (self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"]) - self.sept_mask) > 0
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
-
         else:
             self.sept_mask = None
             self.perim_mask = self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"])
@@ -511,9 +453,6 @@ class Cell(object):
         """mask and fluor are the global images
            NOTE: mask is 0 (black) at cells and 1 (white) outside
         """
-        
-        # TODO 
-        mask = 1 - mask
 
         x0, y0, x1, y1 = self.box
         wid, hei = mask.shape
@@ -534,8 +473,7 @@ class Cell(object):
         mask_box = 1 - inverted_mask_box
 
         fluor_box = fluor[x0:x1, y0:y1]
-        self.stats["Baseline"] = np.median(
-            mask_box[mask_box > 0] * fluor_box[mask_box > 0])
+        self.stats["Baseline"] = np.median(mask_box[mask_box > 0] * fluor_box[mask_box > 0])
 
     def measure_fluor(self, fluorbox, roi, fraction=1.0):
         """returns the median and std of  fluorescence in roi
@@ -561,10 +499,13 @@ class Cell(object):
         else:
             return 0
 
-    def compute_fluor_stats(self, params, mask, fluor):
+    def compute_fluor_stats(self, params, image_manager):
         """Computes the cell stats related to the fluorescence"""
-        self.compute_fluor_baseline(mask, fluor, params["baseline_margin"])
-        fluorbox = self.fluor_box(fluor)
+        self.compute_fluor_baseline(self.cell_mask,
+                                    self.fluor,
+                                    params["baseline_margin"])
+
+        fluorbox = self.image_box(self.fluor)
 
         self.stats["Cell Median"] = \
             self.measure_fluor(fluorbox, self.cell_mask) - \
@@ -578,7 +519,7 @@ class Cell(object):
             self.measure_fluor(fluorbox, self.cyto_mask) - \
             self.stats["Baseline"]
 
-        if params["find_septum"] or params["find_openseptum"]:
+        if params.find_septum or params.find_openseptum:
             self.stats["Septum Median"] = self.measure_fluor(
                 fluorbox, self.sept_mask) - self.stats["Baseline"]
 
@@ -608,80 +549,26 @@ class Cell(object):
 
             self.stats["Memb+Sept Median"] = 0
 
-    def get_cell_image(self, fluor_image):
-        x0, y0, x1, y1 = self.box
-        img = fluor_image[x1:x0 - 1, y1:y0 - 1] * self.cell_mask
-
-        return img
-
 
 class CellManager:
     """Main class of the module. Should be used to interact with the rest of
     the modules."""
 
-    def __init__(self, label, fluor):
-        self.cells = {}
-        self.original_cells = {}
+    def __init__(self, label_img, fluor, params):
 
-        self.label_img = label
+        self.label_img = label_img
         self.fluor_img = fluor
-        self.mask = (label>0).astype(int)
+        self.mask = (label_img>0).astype(int)
 
-        spmap = plt.cm.get_cmap("hsv", 10)
-        self.cell_colors = spmap(np.arange(10))
+        self.params = params
 
-    def clean_empty_cells(self):
-        """Removes empty cell objects from the cells dict"""
-        newcells = {}
-        for k in self.cells.keys():
-            if self.cells[k].stats["Area"] > 0:
-                newcells[k] = self.cells[k]
+        self.properties = None
 
-        self.cells = newcells
+    def compute_cell_properties(self):
 
-    def cell_regions_from_labels(self):
-        """
-        Creates a dictionary of N cells assuming self.labels has consecutive values from 1 to N. Each cell is at key label-1
-        """
-        
-        properties = regionprops(self.label_img)
+        properties = regionprops_table(self.label_img, self.fluor_img, cache=True,
+                                       properties=('label','area','bbox','centroid',
+                                                   'axis_major_length','axis_minor_length',
+                                                   'orientation','perimeter','eccentricity'))
 
-        cells = {}
-        for f in np.unique(labels):
-            proto_cell = Cell(f)
-
-            proto_cell.box = properties[f].bbox
-            proto_cell.stats["Area"] = properties[f].area
-            proto_cell.stats["Perimeter"] = properties[f].perimeter
-            proto_cell.stats["Orientation"] = properties[f].orientation
-            proto_cell.stats["Length"] = properties[f].axis_major_length
-            proto_cell.stats["Width"] = properties[f].axis_minor_length
-            proto_cell.stats["Eccentricity"] = properties[f].eccentricity
-            proto_cell.stats["Irregularity"] = properties[f].perimeter / (properties[f].area**0.5)
-            
-
-            cells[str(int(f))] = proto_cell
-
-        self.cells = cells
-        self.original_cells = deepcopy(self.cells)
-
-    def mark_cell_as_noise(self, label_c1, is_noise):
-        """Used to change the selection_state of a cell to 0 (noise)
-        or to revert that change if the optional param "is_noise" is marked as
-        false."""
-        if is_noise:
-            self.cells[str(label_c1)].selection_state = 0
-            self.cells[str(label_c1)].marked_as_noise = "Yes"
-        else:
-            self.cells[str(label_c1)].selection_state = 1
-            self.cells[str(label_c1)].marked_as_noise = "No"
-
-    def process_cells(self, params):
-        """Method used to compute the individual regions of each cell and the
-        computation of the stats related to the fluorescence"""
-        for k in list(self.cells.keys()):
-            try:
-                self.cells[k].compute_regions(params, self.fluor)
-                self.cells[k].compute_fluor_stats(params, self.mask, self.fluor_img)
-            except TypeError:
-                del self.cells[k]
+        self.properties = properties
