@@ -10,10 +10,13 @@ if TYPE_CHECKING:
 
 from magicgui import magic_factory
 
+from napari_skimage_regionprops import add_table
+
 from .ehooke.cells import CellManager
 
 @magic_factory(Septum_algorithm={"choices":["Isodata","Box"]})
-def compute_cells(Label_Image:"napari.layers.Labels",
+def compute_cells(Viewer:"napari.Viewer",
+                  Label_Image:"napari.layers.Labels",
                   Fluor_Image:"napari.layers.Image",
                   Pixel_size:float=1,
                   Inner_mask_thickness:float=4,
@@ -35,6 +38,8 @@ def compute_cells(Label_Image:"napari.layers.Labels",
     cell_man.compute_cell_properties()
     
     Label_Image.properties = cell_man.properties
+
+    add_table(Label_Image, Viewer)
     
 
 
