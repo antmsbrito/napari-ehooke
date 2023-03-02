@@ -58,6 +58,6 @@ def compute_mask(Base:"napari.types.ImageData",Fluor:"napari.types.ImageData",al
 
         aligned_fluor = warp(Fluor, matrix.inverse, preserve_range=True) # TODO check if fluor intensity values stay the same
 
-        return [(mask, {'name': 'Mask'}, 'Labels'), (aligned_fluor,{'name':'Aligned fluor'}, 'Image')]
+        return [(aligned_fluor,{'name':'Aligned fluor'}, 'Image'),(mask, {'name': 'Mask'}, 'Labels')]
     else:
         return [(mask, {'name': 'Mask'}, 'Labels'),]
