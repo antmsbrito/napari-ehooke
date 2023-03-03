@@ -1,7 +1,6 @@
 """TODO"""
 
 import math
-from functools import partial, lru_cache
 
 import numpy as np
 
@@ -12,15 +11,20 @@ from skimage.draw import line
 from skimage import morphology
 
 from .cellprocessing import rotation_matrices, bound_rectangle, bounded_point
+from .cellcycleclassifier import CellCycleClassifier
 
 class Cell:
     """Template for each cell object."""
 
-    def __init__(self, regionmask, intensity, params):
+    def __init__(self, regionmask, intensity, optional, ccc, params):
         
 
         self.mask = regionmask.astype(int)
         self.fluor = intensity
+
+        self.dna = optional # just for cell cycle
+        self.ccc = ccc # just for cell cycle
+
         self.params = params
 
         self.box_margin = 5
@@ -69,10 +73,14 @@ class Cell:
                            ("Fluor Ratio", 0),
                            ("Fluor Ratio 75%", 0),
                            ("Fluor Ratio 25%", 0),
-                           ("Fluor Ratio 10%", 0)])
+                           ("Fluor Ratio 10%", 0),
+                           ("Cell Cycle Phase", 0)])
  
         self.compute_regions(self.params)
         self.compute_fluor_stats(self.params)
+
+        if self.params['classify_cell_cycle']:
+            self.stats['Cell Cycle Phase'] = self.ccc.classify_cell(self)
 
     def image_box(self, image):
         """ returns box """
@@ -574,10 +582,11 @@ class CellManager:
     """Main class of the module. Should be used to interact with the rest of
     the modules."""
 
-    def __init__(self, label_img, fluor, params):
+    def __init__(self, label_img, fluor, optional, params):
 
         self.label_img = label_img
         self.fluor_img = fluor
+        self.optional_img = optional
 
         self.params = params
 
@@ -598,13 +607,19 @@ class CellManager:
         Fluor_Ratio_75 = []
         Fluor_Ratio_25 = []
         Fluor_Ratio_10 = []
+        CellCyclePhase = []
 
         for l in np.unique(self.label_img):
             if l == 0:
                 continue
-            
+
+            if self.params['classify_cell_cycle']:
+                ccc = CellCycleClassifier(self.fluor_img, self.optional_img,self.params['microscope'])
+            else:
+                ccc = None
+
             mask = self.label_img==l
-            c = Cell(regionmask=mask, intensity=self.fluor_img, params=self.params)
+            c = Cell(regionmask=mask, intensity=self.fluor_img, optional=self.optional_img, ccc=ccc, params=self.params)
 
             Baseline.append(c.stats['Baseline'])
             Membrane_Median.append(c.stats['Membrane Median'])
@@ -614,16 +629,17 @@ class CellManager:
             Fluor_Ratio_75.append(c.stats['Fluor Ratio 75%'])
             Fluor_Ratio_25.append(c.stats['Fluor Ratio 25%'])
             Fluor_Ratio_10.append(c.stats['Fluor Ratio 10%'])
+            CellCyclePhase.append(c.stats['Cell Cycle Phase'])
 
-        properties['Baseline'] = Baseline
-        properties['Membrane Median'] = Membrane_Median
-        properties['Septum Median'] = Septum_Median
-        properties['Cytoplasm Median'] = Cytoplasm_Median
-        properties['Fluor Ratio'] = Fluor_Ratio
-        properties['Fluor Ratio 75%'] = Fluor_Ratio_75
-        properties['Fluor Ratio 25%'] = Fluor_Ratio_25
-        properties['Fluor Ratio 10%'] = Fluor_Ratio_10
-
+        properties['Baseline'] = np.array(Baseline)
+        properties['Membrane Median'] = np.array(Membrane_Median)
+        properties['Septum Median'] = np.array(Septum_Median)
+        properties['Cytoplasm Median'] = np.array(Cytoplasm_Median)
+        properties['Fluor Ratio'] = np.array(Fluor_Ratio)
+        properties['Fluor Ratio 75%'] = np.array(Fluor_Ratio_75)
+        properties['Fluor Ratio 25%'] = np.array(Fluor_Ratio_25)
+        properties['Fluor Ratio 10%'] = np.array(Fluor_Ratio_10)
+        properties['Cell Cycle Phase'] = np.array(CellCyclePhase)
 
         self.properties = properties
 
