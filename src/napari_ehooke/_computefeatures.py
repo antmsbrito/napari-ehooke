@@ -20,7 +20,7 @@ def compute_features(Mask:"napari.types.LabelsData",Peak_min_distance:int=5,Peak
     seg_man = SegmentsManager()
     seg_man.compute_segments(pars, Mask)
 
-    return [(seg_man.base_w_features, {'name': 'Features'}, 'Labels'), (seg_man.labels,{'name':'Labels'}, 'Labels')]
+    return [(seg_man.labels,{'name':'Labels'}, 'Labels')]
 
 
     
