@@ -1,11 +1,11 @@
 """TODO"""
 
 import math
-from functools import partial
+from functools import partial, lru_cache
 
 import numpy as np
 
-from skimage.measure import regionprops_table,label
+from skimage.measure import regionprops_table, label, regionprops
 from skimage.filters import threshold_isodata
 from skimage.util import img_as_float, img_as_int
 from skimage.draw import line
@@ -16,28 +16,46 @@ from .cellprocessing import rotation_matrices, bound_rectangle, bounded_point
 class Cell:
     """Template for each cell object."""
 
-    def __init__(self, regionmask, intensity, properties,params):
-    
-        self.cell_mask = regionmask
+    def __init__(self, regionmask, intensity, params):
+        
+
+        self.mask = regionmask.astype(int)
         self.fluor = intensity
         self.params = params
 
-        self.bbox = properties.bbox
+        self.box_margin = 5
+
+        properties = regionprops(regionmask.astype(int), intensity)[0]
+
+        self.box = properties.bbox # (min_row, min_col, max_row, max_col)
+
+        
+        w,h = self.fluor.shape
+        self.box = (max(self.box[0] - self.box_margin, 0),
+                    max(self.box[1] - self.box_margin, 0),
+                    min(self.box[2] + self.box_margin, w - 1),
+                    min(self.box[3] + self.box_margin, h - 1))
 
         y0, x0 = properties.centroid
-
         x1 = x0 + math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
         y1 = y0 - math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
         x2 = x0 - math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
         y2 = y0 + math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
-        self.long_axis = x1,y1,x2,y2
+
+        # NOTE THE SWAP ON X AND Y 
+        self.long_axis = np.rint(np.array([[y1,x1],[y2,x2]])).astype(int)
         
         x1 = x0 - math.sin(properties.orientation) * 0.5 * properties.axis_major_length
         y1 = y0 - math.cos(properties.orientation) * 0.5 * properties.axis_major_length
         x2 = x0 + math.sin(properties.orientation) * 0.5 * properties.axis_major_length
         y2 = y0 + math.cos(properties.orientation) * 0.5 * properties.axis_major_length
-        self.short_axis = x1,y1,x2,y2
+        
+        # NOTE THE SWAP ON X AND Y 
+        self.short_axis = np.rint(np.array([[y1,x1],[y2,x2]])).astype(int)
 
+        # CHECK IF SHORT AXIS AND LONG AXIS ARE OUTSIDE OF BOX
+
+        self.cell_mask = self.image_box(self.mask)
         self.perim_mask = None
         self.sept_mask = None
         self.cyto_mask = None
@@ -52,14 +70,16 @@ class Cell:
                            ("Fluor Ratio 75%", 0),
                            ("Fluor Ratio 25%", 0),
                            ("Fluor Ratio 10%", 0)])
-        self.box_margin = 5
+ 
+        self.compute_regions(self.params)
+        self.compute_fluor_stats(self.params)
 
     def image_box(self, image):
         """ returns box """
 
         x0, y0, x1, y1 = self.box
         try:
-            return image[x0:x1 + 1, y0:y1 + 1]
+            return image[x0:x1+1, y0:y1+1]
         except TypeError:
             return None
 
@@ -410,14 +430,11 @@ class Cell:
         """Computes each different region of the cell (whole cell, membrane,
         septum, cytoplasm) and creates their respectives masks."""
 
-        fluor = self.image_box(self.fluor)
-        cell_mask = self.image_box(self.cell_mask)
+        if params["find_septum"]:
+            self.recursive_compute_sept(self.cell_mask,params["inner_mask_thickness"],params["septum_algorithm"])
 
-        if params.find_septum:
-            self.recursive_compute_sept(cell_mask,params["inner_mask_thickness"],params["septum_algorithm"])
-
-            if params.septum_algorithm == "Isodata":
-                self.perim_mask = self.compute_perim_mask(cell_mask, params["inner_mask_thickness"])
+            if params["septum_algorithm"] == "Isodata":
+                self.perim_mask = self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"])
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
                 linmask = self.remove_sept_from_membrane(self.fluor.shape)
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
@@ -428,10 +445,10 @@ class Cell:
                 self.perim_mask = (self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"]) - self.sept_mask) > 0
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
-        elif params.find_openseptum:
+        elif params["find_openseptum"]:
             self.recursive_compute_opensept(self.cell_mask,params["inner_mask_thickness"],params["septum_algorithm"])
 
-            if params.septum_algorithm == "Isodata":
+            if params["septum_algorithm"] == "Isodata":
                 self.perim_mask = self.compute_perim_mask(self.cell_mask,params["inner_mask_thickness"])
 
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
@@ -453,7 +470,10 @@ class Cell:
         """mask and fluor are the global images
            NOTE: mask is 0 (black) at cells and 1 (white) outside
         """
+        # compatibility
+        mask = 1 - mask
 
+        # here zero is cell
         x0, y0, x1, y1 = self.box
         wid, hei = mask.shape
         x0 = max(x0 - margin, 0)
@@ -463,13 +483,14 @@ class Cell:
         mask_box = mask[x0:x1, y0:y1]
 
         count = 0
-
+        # here zero is background
         inverted_mask_box = 1 - mask_box
 
         while count < 5:
             inverted_mask_box = morphology.binary_dilation(inverted_mask_box)
             count += 1
 
+        # here zero is cell
         mask_box = 1 - inverted_mask_box
 
         fluor_box = fluor[x0:x1, y0:y1]
@@ -479,7 +500,6 @@ class Cell:
         """returns the median and std of  fluorescence in roi
         fluorbox has the same dimensions as the roi mask
         """
-        fluorbox = fluorbox
         if roi is not None:
             bright = fluorbox * roi
             bright = bright[roi > 0.5]
@@ -499,9 +519,9 @@ class Cell:
         else:
             return 0
 
-    def compute_fluor_stats(self, params, image_manager):
+    def compute_fluor_stats(self, params):
         """Computes the cell stats related to the fluorescence"""
-        self.compute_fluor_baseline(self.cell_mask,
+        self.compute_fluor_baseline(self.mask,
                                     self.fluor,
                                     params["baseline_margin"])
 
@@ -519,7 +539,7 @@ class Cell:
             self.measure_fluor(fluorbox, self.cyto_mask) - \
             self.stats["Baseline"]
 
-        if params.find_septum or params.find_openseptum:
+        if params["find_septum"] or params["find_openseptum"]:
             self.stats["Septum Median"] = self.measure_fluor(
                 fluorbox, self.sept_mask) - self.stats["Baseline"]
 
@@ -558,7 +578,6 @@ class CellManager:
 
         self.label_img = label_img
         self.fluor_img = fluor
-        self.mask = (label_img>0).astype(int)
 
         self.params = params
 
@@ -566,9 +585,46 @@ class CellManager:
 
     def compute_cell_properties(self):
 
-        properties = regionprops_table(self.label_img, self.fluor_img, cache=True,
+        properties = regionprops_table(self.label_img, self.fluor_img,
                                        properties=('label','area','bbox','centroid',
                                                    'axis_major_length','axis_minor_length',
                                                    'orientation','perimeter','eccentricity'))
 
+        Baseline = []
+        Membrane_Median = []
+        Septum_Median = []
+        Cytoplasm_Median = [] 
+        Fluor_Ratio = []
+        Fluor_Ratio_75 = []
+        Fluor_Ratio_25 = []
+        Fluor_Ratio_10 = []
+
+        for l in np.unique(self.label_img):
+            if l == 0:
+                continue
+            
+            mask = self.label_img==l
+            c = Cell(regionmask=mask, intensity=self.fluor_img, params=self.params)
+
+            Baseline.append(c.stats['Baseline'])
+            Membrane_Median.append(c.stats['Membrane Median'])
+            Septum_Median.append(c.stats['Septum Median'])
+            Cytoplasm_Median.append(c.stats['Cytoplasm Median'])
+            Fluor_Ratio.append(c.stats['Fluor Ratio'])
+            Fluor_Ratio_75.append(c.stats['Fluor Ratio 75%'])
+            Fluor_Ratio_25.append(c.stats['Fluor Ratio 25%'])
+            Fluor_Ratio_10.append(c.stats['Fluor Ratio 10%'])
+
+        properties['Baseline'] = Baseline
+        properties['Membrane Median'] = Membrane_Median
+        properties['Septum Median'] = Septum_Median
+        properties['Cytoplasm Median'] = Cytoplasm_Median
+        properties['Fluor Ratio'] = Fluor_Ratio
+        properties['Fluor Ratio 75%'] = Fluor_Ratio_75
+        properties['Fluor Ratio 25%'] = Fluor_Ratio_25
+        properties['Fluor Ratio 10%'] = Fluor_Ratio_10
+
+
         self.properties = properties
+
+        
