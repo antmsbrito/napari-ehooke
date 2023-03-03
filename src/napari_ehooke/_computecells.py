@@ -19,9 +19,9 @@ def compute_cells(Viewer:"napari.Viewer",
                   Label_Image:"napari.layers.Labels",
                   Fluor_Image:"napari.layers.Image",
                   Pixel_size:float=1,
-                  Inner_mask_thickness:float=4,
+                  Inner_mask_thickness:int=4,
                   Septum_algorithm="Isodata",
-                  Baseline_margin:float=30,
+                  Baseline_margin:int=30,
                   Find_septum:bool=False,
                   Find_open_septum:bool=False,
                   ):
@@ -41,5 +41,4 @@ def compute_cells(Viewer:"napari.Viewer",
 
     add_table(Label_Image, Viewer)
     
-
 
