@@ -30,7 +30,7 @@ class Cell:
         properties = regionprops(regionmask.astype(int), intensity)[0]
 
         self.box = properties.bbox # (min_row, min_col, max_row, max_col)
-
+        self.orientation = properties.orientation
         
         w,h = self.fluor.shape
         self.box = (max(self.box[0] - self.box_margin, 0),
