@@ -8,10 +8,12 @@ from skimage.measure import regionprops_table, label, regionprops
 from skimage.filters import threshold_isodata
 from skimage.util import img_as_float, img_as_int
 from skimage.draw import line
+from skimage.transform import resize, rotate
 from skimage import morphology, color, exposure
 
 from .cellprocessing import rotation_matrices, bound_rectangle, bounded_point
 from .cellcycleclassifier import CellCycleClassifier
+from .cellaverager import CellAverager
 from .reports import ReportManager
 
 class Cell:
@@ -30,14 +32,13 @@ class Cell:
         properties = regionprops(regionmask.astype(int), intensity)[0]
 
         self.box = properties.bbox # (min_row, min_col, max_row, max_col)
-        self.orientation = properties.orientation
-        
+       
         w,h = self.fluor.shape
         self.box = (max(self.box[0] - self.box_margin, 0),
                     max(self.box[1] - self.box_margin, 0),
                     min(self.box[2] + self.box_margin, w - 1),
                     min(self.box[3] + self.box_margin, h - 1))
-
+        
         y0, x0 = properties.centroid
         x1 = x0 + math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
         y1 = y0 - math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
@@ -55,7 +56,7 @@ class Cell:
         # NOTE THE SWAP ON X AND Y 
         self.short_axis = np.rint(np.array([[y1,x1],[y2,x2]])).astype(int)
 
-        # CHECK IF SHORT AXIS AND LONG AXIS ARE OUTSIDE OF BOX
+        # CHECK IF SHORT AXIS AND LONG AXIS ARE OUTSIDE OF BOX TODO
 
         self.cell_mask = self.image_box(self.mask)
         self.perim_mask = None
@@ -632,6 +633,9 @@ class CellManager:
 
         self.properties = None
 
+        self.heatmap_model = np.zeros((30,30))
+
+
     def compute_cell_properties(self):
 
         properties = regionprops_table(self.label_img, self.fluor_img,
@@ -651,7 +655,10 @@ class CellManager:
         all_cells = []
 
         if self.params['classify_cell_cycle']:
-                ccc = CellCycleClassifier(self.fluor_img, self.optional_img,self.params['microscope'])
+            ccc = CellCycleClassifier(self.fluor_img, self.optional_img,self.params['microscope'])
+
+        if self.params['cell_averager']:
+            ca = CellAverager()
 
         for l in np.unique(self.label_img):
             if l == 0:
@@ -662,6 +669,9 @@ class CellManager:
 
             if self.params['generate_report']:
                 all_cells.append(c)
+
+            if self.params['cell_averager']:
+                ca.align(c)
 
             Baseline.append(c.stats['Baseline'])
             Membrane_Median.append(c.stats['Membrane Median'])
@@ -688,6 +698,10 @@ class CellManager:
         properties['Cell Cycle Phase'] = np.array(CellCyclePhase)
 
         self.properties = properties
+
+        if self.params['cell_averager']:
+            ca.average()
+            self.heatmap_model = ca.model
 
         if self.params['generate_report']:
             rm = ReportManager(parameters=self.params,cells=all_cells)
