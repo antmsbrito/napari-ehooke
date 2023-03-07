@@ -29,6 +29,7 @@ def compute_cells(Viewer:"napari.Viewer",
                   Microscope:str="Epi",
                   Generate_Report:bool=False,
                   Report_path:os.PathLike='',
+                  Compute_Heatmap:bool=False
                   ):
 
     params = {"pixel_size":Pixel_size,
@@ -40,7 +41,8 @@ def compute_cells(Viewer:"napari.Viewer",
               "classify_cell_cycle":Classify_cell_cycle,
               "microscope":Microscope,
               "generate_report":Generate_Report,
-              "report_path":str(Report_path)
+              "report_path":str(Report_path),
+              "cell_averager":Compute_Heatmap,
               }
 
     cell_man = CellManager(label_img=Label_Image.data, fluor=Fluor_Image.data, optional=DNA_Image.data, params=params)
@@ -50,4 +52,6 @@ def compute_cells(Viewer:"napari.Viewer",
 
     add_table(Label_Image, Viewer)
     
+    if Compute_Heatmap:
+        Viewer.add_image(cell_man.heatmap_model, name="Cell Averager")
 
