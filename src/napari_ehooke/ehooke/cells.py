@@ -14,6 +14,7 @@ from skimage import morphology, color, exposure
 from .cellprocessing import rotation_matrices, bound_rectangle, bounded_point
 from .cellcycleclassifier import CellCycleClassifier
 from .cellaverager import CellAverager
+from .colocmanager import ColocManager
 from .reports import ReportManager
 
 class Cell:
@@ -706,4 +707,8 @@ class CellManager:
         if self.params['generate_report']:
             rm = ReportManager(parameters=self.params,cells=all_cells)
             rm.generate_report(self.params['report_path'])
+            if self.params['coloc']:
+                coloc = ColocManager()
+                coloc.compute_pcc(self.fluor_img, self.optional_img,all_cells,self.params,rm.cell_data_filename)
+
         
