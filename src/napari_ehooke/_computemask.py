@@ -16,8 +16,10 @@ from skimage.filters import threshold_isodata, threshold_local
 from skimage.morphology import binary_closing, binary_dilation
 from skimage.transform import EuclideanTransform, warp
 
+from ._computefeatures import compute_features
+
 @magic_factory(algorithm={"choices":["Isodata","Local Average"]})
-def compute_mask(Base:"napari.types.ImageData",Fluor:"napari.types.ImageData",algorithm="Isodata",blocksize:int=151,offset:float=0.02,closing:int=1,dilation:int=0,fillholes:bool=False,autoalign:bool=False)->typing.List["napari.types.LayerDataTuple"]:
+def compute_mask(Viewer:"napari.Viewer",Base:"napari.types.ImageData",Fluor:"napari.types.ImageData",algorithm="Isodata",blocksize:int=151,offset:float=0.02,closing:int=1,dilation:int=0,fillholes:bool=False,autoalign:bool=False)->typing.List["napari.types.LayerDataTuple"]:
     """
     TODO    
     """
@@ -58,6 +60,9 @@ def compute_mask(Base:"napari.types.ImageData",Fluor:"napari.types.ImageData",al
 
         aligned_fluor = warp(Fluor, matrix.inverse, preserve_range=True) # TODO check if fluor intensity values stay the same
 
+        Viewer.window.add_dock_widget(compute_features())
+
         return [(aligned_fluor,{'name':'Aligned fluor'}, 'Image'),(mask, {'name': 'Mask'}, 'Labels')]
     else:
+        Viewer.window.add_dock_widget(compute_features())
         return [(mask, {'name': 'Mask'}, 'Labels'),]

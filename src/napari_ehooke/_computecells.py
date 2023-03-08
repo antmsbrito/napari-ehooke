@@ -1,7 +1,7 @@
 """
 TODO
 """
-
+import os
 import typing
 from typing import TYPE_CHECKING
 
@@ -14,7 +14,7 @@ from napari_skimage_regionprops import add_table
 
 from .ehooke.cells import CellManager
 
-@magic_factory(Septum_algorithm={"choices":["Isodata","Box"]},Microscope={"choices":["Epi","SIM"]})
+@magic_factory(Septum_algorithm={"choices":["Isodata","Box"]},Microscope={"choices":["Epi","SIM"]},Report_path={'widget_type':'FileEdit','mode':'d'})
 def compute_cells(Viewer:"napari.Viewer",
                   Label_Image:"napari.layers.Labels",
                   Fluor_Image:"napari.layers.Image",
@@ -26,7 +26,11 @@ def compute_cells(Viewer:"napari.Viewer",
                   Find_septum:bool=False,
                   Find_open_septum:bool=False,
                   Classify_cell_cycle:bool=False,
-                  Microscope:str="Epi"
+                  Microscope:str="Epi",
+                  Generate_Report:bool=False,
+                  Compute_Colocalization:bool=False,
+                  Report_path:os.PathLike='',
+                  Compute_Heatmap:bool=False,
                   ):
 
     params = {"pixel_size":Pixel_size,
@@ -37,6 +41,10 @@ def compute_cells(Viewer:"napari.Viewer",
               "find_openseptum":Find_open_septum,
               "classify_cell_cycle":Classify_cell_cycle,
               "microscope":Microscope,
+              "generate_report":Generate_Report,
+              "report_path":str(Report_path),
+              "cell_averager":Compute_Heatmap,
+              "coloc":Compute_Colocalization,
               }
 
     cell_man = CellManager(label_img=Label_Image.data, fluor=Fluor_Image.data, optional=DNA_Image.data, params=params)
@@ -46,4 +54,6 @@ def compute_cells(Viewer:"napari.Viewer",
 
     add_table(Label_Image, Viewer)
     
+    if Compute_Heatmap:
+        Viewer.add_image(cell_man.heatmap_model, name="Cell Averager")
 

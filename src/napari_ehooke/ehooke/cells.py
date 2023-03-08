@@ -8,22 +8,23 @@ from skimage.measure import regionprops_table, label, regionprops
 from skimage.filters import threshold_isodata
 from skimage.util import img_as_float, img_as_int
 from skimage.draw import line
-from skimage import morphology
+from skimage.transform import resize, rotate
+from skimage import morphology, color, exposure
 
 from .cellprocessing import rotation_matrices, bound_rectangle, bounded_point
 from .cellcycleclassifier import CellCycleClassifier
+from .cellaverager import CellAverager
+from .colocmanager import ColocManager
+from .reports import ReportManager
 
 class Cell:
     """Template for each cell object."""
 
-    def __init__(self, regionmask, intensity, optional, ccc, params):
+    def __init__(self, label, regionmask, intensity, params):
         
-
+        self.label = label
         self.mask = regionmask.astype(int)
         self.fluor = intensity
-
-        self.dna = optional # just for cell cycle
-        self.ccc = ccc # just for cell cycle
 
         self.params = params
 
@@ -32,14 +33,13 @@ class Cell:
         properties = regionprops(regionmask.astype(int), intensity)[0]
 
         self.box = properties.bbox # (min_row, min_col, max_row, max_col)
-
-        
+       
         w,h = self.fluor.shape
         self.box = (max(self.box[0] - self.box_margin, 0),
                     max(self.box[1] - self.box_margin, 0),
                     min(self.box[2] + self.box_margin, w - 1),
                     min(self.box[3] + self.box_margin, h - 1))
-
+        
         y0, x0 = properties.centroid
         x1 = x0 + math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
         y1 = y0 - math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
@@ -57,7 +57,7 @@ class Cell:
         # NOTE THE SWAP ON X AND Y 
         self.short_axis = np.rint(np.array([[y1,x1],[y2,x2]])).astype(int)
 
-        # CHECK IF SHORT AXIS AND LONG AXIS ARE OUTSIDE OF BOX
+        # CHECK IF SHORT AXIS AND LONG AXIS ARE OUTSIDE OF BOX TODO
 
         self.cell_mask = self.image_box(self.mask)
         self.perim_mask = None
@@ -74,13 +74,19 @@ class Cell:
                            ("Fluor Ratio 75%", 0),
                            ("Fluor Ratio 25%", 0),
                            ("Fluor Ratio 10%", 0),
-                           ("Cell Cycle Phase", 0)])
- 
+                           ("Cell Cycle Phase", 0),
+                           ("Area",properties.area),
+                           ("Perimeter",properties.perimeter),
+                           ("Eccentricity",properties.eccentricity),
+                           ])
+        
+        self.selection_state = 1
         self.compute_regions(self.params)
         self.compute_fluor_stats(self.params)
 
-        if self.params['classify_cell_cycle']:
-            self.stats['Cell Cycle Phase'] = self.ccc.classify_cell(self)
+        self.image = None
+        self.set_image()
+
 
     def image_box(self, image):
         """ returns box """
@@ -577,6 +583,42 @@ class Cell:
 
             self.stats["Memb+Sept Median"] = 0
 
+    def set_image(self):
+
+        fluor = img_as_float(self.fluor)
+        fluor = exposure.rescale_intensity(fluor)
+
+        x0, y0, x1, y1 = self.box
+        img = color.gray2rgb(np.zeros((x1 - x0 + 1, 5 * (y1 - y0 + 1))))
+        bx0 = 0
+        bx1 = x1 - x0 + 1
+        by0 = 0
+        by1 = y1 - y0 + 1
+
+        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1])
+        by0 = by0 + y1 - y0 + 1
+        by1 = by1 + y1 - y0 + 1
+
+        perim = self.perim_mask
+        axial = self.sept_mask
+        cyto = self.cyto_mask
+
+        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * self.cell_mask)
+        by0 = by0 + y1 - y0 + 1
+        by1 = by1 + y1 - y0 + 1
+
+        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * perim)
+        by0 = by0 + y1 - y0 + 1
+        by1 = by1 + y1 - y0 + 1
+
+        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * cyto)
+
+        if self.params['find_septum'] or self.params['find_openseptum']:
+            by0 = by0 + y1 - y0 + 1
+            by1 = by1 + y1 - y0 + 1
+            img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * axial)
+
+        self.image = img
 
 class CellManager:
     """Main class of the module. Should be used to interact with the rest of
@@ -591,6 +633,9 @@ class CellManager:
         self.params = params
 
         self.properties = None
+
+        self.heatmap_model = np.zeros((30,30))
+
 
     def compute_cell_properties(self):
 
@@ -608,18 +653,26 @@ class CellManager:
         Fluor_Ratio_25 = []
         Fluor_Ratio_10 = []
         CellCyclePhase = []
+        all_cells = []
+
+        if self.params['classify_cell_cycle']:
+            ccc = CellCycleClassifier(self.fluor_img, self.optional_img,self.params['microscope'])
+
+        if self.params['cell_averager']:
+            ca = CellAverager()
 
         for l in np.unique(self.label_img):
             if l == 0:
                 continue
 
-            if self.params['classify_cell_cycle']:
-                ccc = CellCycleClassifier(self.fluor_img, self.optional_img,self.params['microscope'])
-            else:
-                ccc = None
-
             mask = self.label_img==l
-            c = Cell(regionmask=mask, intensity=self.fluor_img, optional=self.optional_img, ccc=ccc, params=self.params)
+            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, params=self.params)
+
+            if self.params['generate_report']:
+                all_cells.append(c)
+
+            if self.params['cell_averager']:
+                ca.align(c)
 
             Baseline.append(c.stats['Baseline'])
             Membrane_Median.append(c.stats['Membrane Median'])
@@ -629,6 +682,10 @@ class CellManager:
             Fluor_Ratio_75.append(c.stats['Fluor Ratio 75%'])
             Fluor_Ratio_25.append(c.stats['Fluor Ratio 25%'])
             Fluor_Ratio_10.append(c.stats['Fluor Ratio 10%'])
+            if self.params['classify_cell_cycle']:
+                c.stats['Cell Cycle Phase'] = ccc.classify_cell(c)
+            else:
+                c.stats['Cell Cycle Phase'] = 0
             CellCyclePhase.append(c.stats['Cell Cycle Phase'])
 
         properties['Baseline'] = np.array(Baseline)
@@ -642,5 +699,16 @@ class CellManager:
         properties['Cell Cycle Phase'] = np.array(CellCyclePhase)
 
         self.properties = properties
+
+        if self.params['cell_averager']:
+            ca.average()
+            self.heatmap_model = ca.model
+
+        if self.params['generate_report']:
+            rm = ReportManager(parameters=self.params,cells=all_cells)
+            rm.generate_report(self.params['report_path'])
+            if self.params['coloc']:
+                coloc = ColocManager()
+                coloc.compute_pcc(self.fluor_img, self.optional_img,all_cells,self.params,rm.cell_data_filename)
 
         

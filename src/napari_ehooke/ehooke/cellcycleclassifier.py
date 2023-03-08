@@ -2,9 +2,9 @@ import numpy as np
 from skimage.util import img_as_float
 from skimage.exposure import rescale_intensity
 from skimage.transform import resize as skresize
-from keras.models import load_model
 from keras.utils import get_file
 
+import tensorflow as tf
 
 import os
 
@@ -20,7 +20,7 @@ class CellCycleClassifier:
 
         # todo
         cnnmodel = get_file("model","https://github.com/antmsbrito/napari-ehooke/blob/development/docs/cellcycle_cnn_model?raw=true")
-        self.model = load_model(cnnmodel)
+        self.model = tf.compat.v1.keras.models.load_model(cnnmodel)
 
         self.fluor_fov = fluor_fov
         self.optional_fov = optional_fov
@@ -102,6 +102,6 @@ class CellCycleClassifier:
                                 anti_aliasing=False,
                                 anti_aliasing_sigma=None)
 
-        pred = self.model.predict(np.concatenate((fluor_img, optional_img), axis=1).reshape(-1, 100, 200, 1))
-
-        return np.argmax(pred,axis=1)[0] + 1
+        pred = self.model.predict(np.concatenate((fluor_img, optional_img), axis=1).reshape(-1, 100, 200, 1), verbose=0)
+        
+        return np.argmax(pred,axis=-1)[0] + 1
