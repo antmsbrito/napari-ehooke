@@ -4,6 +4,8 @@ import math
 
 import numpy as np
 
+import pandas as pd
+
 from skimage.measure import regionprops_table, label, regionprops
 from skimage.filters import threshold_isodata
 from skimage.util import img_as_float, img_as_int
@@ -591,14 +593,15 @@ class CellManager:
         self.params = params
 
         self.properties = None
+        self.heatmap_model = None
+
 
     def compute_cell_properties(self):
 
-        properties = regionprops_table(self.label_img, self.fluor_img,
-                                       properties=('label','area','bbox','centroid',
-                                                   'axis_major_length','axis_minor_length',
-                                                   'orientation','perimeter','eccentricity'))
-
+        Label = []
+        Area = []
+        Perimeter = []
+        Eccentricity = []
         Baseline = []
         Membrane_Median = []
         Septum_Median = []
@@ -608,9 +611,16 @@ class CellManager:
         Fluor_Ratio_25 = []
         Fluor_Ratio_10 = []
         CellCyclePhase = []
+        All_Cells = [] # TODO consider always saving
+
+        if self.params['classify_cell_cycle']:
+            ccc = CellCycleClassifier(self.fluor_img, self.optional_img, self.params['microscope'])
+        if self.params['cell_averager']:
+            ca = CellAverager()
 
         for l in np.unique(self.label_img):
-            if l == 0:
+
+            if l == 0: # BG
                 continue
 
             if self.params['classify_cell_cycle']:
@@ -619,8 +629,17 @@ class CellManager:
                 ccc = None
 
             mask = self.label_img==l
-            c = Cell(regionmask=mask, intensity=self.fluor_img, optional=self.optional_img, ccc=ccc, params=self.params)
+            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, params=self.params)
+            
+            if self.params['generate_report']:
+                All_Cells.append(c)
+            if self.params['cell_averager']:
+                ca.align(c)
 
+            Label.append(c.label)
+            Area.append(c.stats['Area'])
+            Perimeter.append(c.stats['Perimeter'])
+            Eccentricity.append(c.stats['Eccentricity'])
             Baseline.append(c.stats['Baseline'])
             Membrane_Median.append(c.stats['Membrane Median'])
             Septum_Median.append(c.stats['Septum Median'])
@@ -631,6 +650,11 @@ class CellManager:
             Fluor_Ratio_10.append(c.stats['Fluor Ratio 10%'])
             CellCyclePhase.append(c.stats['Cell Cycle Phase'])
 
+        properties = {}
+        properties['label'] = np.array(Label)
+        properties['Area'] = np.array(Area)
+        properties['Perimeter'] = np.array(Perimeter)
+        properties['Eccentricity'] = np.array(Eccentricity)
         properties['Baseline'] = np.array(Baseline)
         properties['Membrane Median'] = np.array(Membrane_Median)
         properties['Septum Median'] = np.array(Septum_Median)
@@ -643,4 +667,13 @@ class CellManager:
 
         self.properties = properties
 
-        
+        if self.params['cell_averager']:
+            ca.average()
+            self.heatmap_model = ca.model
+
+        if self.params['generate_report']:
+            rm = ReportManager(parameters=self.params,cells=All_Cells)
+            rm.generate_report(self.params['report_path'])
+            if self.params['coloc']:
+                coloc = ColocManager()
+                coloc.compute_pcc(self.fluor_img, self.optional_img,All_Cells,self.params,rm.cell_data_filename)
