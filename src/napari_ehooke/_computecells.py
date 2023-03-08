@@ -28,8 +28,9 @@ def compute_cells(Viewer:"napari.Viewer",
                   Classify_cell_cycle:bool=False,
                   Microscope:str="Epi",
                   Generate_Report:bool=False,
+                  Compute_Colocalization:bool=False,
                   Report_path:os.PathLike='',
-                  Compute_Heatmap:bool=False
+                  Compute_Heatmap:bool=False,
                   ):
 
     params = {"pixel_size":Pixel_size,
@@ -43,6 +44,7 @@ def compute_cells(Viewer:"napari.Viewer",
               "generate_report":Generate_Report,
               "report_path":str(Report_path),
               "cell_averager":Compute_Heatmap,
+              "coloc":Compute_Colocalization,
               }
 
     cell_man = CellManager(label_img=Label_Image.data, fluor=Fluor_Image.data, optional=DNA_Image.data, params=params)
