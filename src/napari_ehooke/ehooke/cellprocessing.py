@@ -53,3 +53,32 @@ def bound_rectangle(points):
     x1, y1 = np.amax(points, axis=0)
     a = np.min([(x1 - x0), (y1 - y0)])
     return x0, y0, x1, y1, a
+
+def stats_format(params):
+    """Returns the list of cell stats to be displayed on the report,
+    depending on the computation of the septum"""
+    result = []
+    result.append(('Area', 3))
+    result.append(('Perimeter', 3))
+    # result.append(('Length', 3))
+    # result.append(('Width', 3))
+    result.append(('Eccentricity', 3))
+    # result.append(('Irregularity', 3)) TODO
+    
+    result.append(('Baseline', 3))
+    result.append(('Cell Median', 3))
+    result.append(('Membrane Median', 3))
+    result.append(('Cytoplasm Median', 3))
+
+    if params['find_septum'] or params['find_openseptum']:
+        result.append(('Septum Median', 3))
+        result.append(("Fluor Ratio", 3))
+        result.append(("Fluor Ratio 75%", 3))
+        result.append(("Fluor Ratio 25%", 3))
+        result.append(("Fluor Ratio 10%", 3))
+        # result.append(("Memb+Sept Median", 3)) TODO
+
+    if params['classify_cell_cycle']:
+        result.append(("Cell Cycle Phase", 1))
+
+    return result
