@@ -12,8 +12,6 @@ from magicgui import magic_factory
 
 from .ehooke.segments import SegmentsManager
 
-from ._computecells import compute_cells
-
 @magic_factory
 def compute_features(Viewer:"napari.Viewer",Mask:"napari.types.LabelsData",Peak_min_distance:int=5,Peak_min_height:int=5,Peak_min_margin:int=10,Max_peaks:int=10000)->typing.List["napari.types.LayerDataTuple"]:
 

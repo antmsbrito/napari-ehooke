@@ -16,8 +16,6 @@ from skimage.filters import threshold_isodata, threshold_local
 from skimage.morphology import binary_closing, binary_dilation
 from skimage.transform import EuclideanTransform, warp
 
-from ._computefeatures import compute_features
-
 @magic_factory(algorithm={"choices":["Isodata","Local Average"]})
 def compute_mask(Viewer:"napari.Viewer",Base:"napari.types.ImageData",Fluor:"napari.types.ImageData",algorithm="Isodata",blocksize:int=151,offset:float=0.02,closing:int=1,dilation:int=0,fillholes:bool=False,autoalign:bool=False)->typing.List["napari.types.LayerDataTuple"]:
     """
