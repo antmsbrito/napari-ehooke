@@ -22,8 +22,6 @@ def compute_features(Viewer:"napari.Viewer",Mask:"napari.types.LabelsData",Peak_
     seg_man = SegmentsManager()
     seg_man.compute_segments(pars, Mask)
     
-    Viewer.window.add_dock_widget(compute_cells())
-
     return [(seg_man.labels,{'name':'Labels'}, 'Labels')]
 
 
