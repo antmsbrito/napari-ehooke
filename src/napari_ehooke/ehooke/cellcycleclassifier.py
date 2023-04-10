@@ -19,7 +19,6 @@ class CellCycleClassifier:
 
     def __init__(self, fluor_fov, optional_fov, microscope):
 
-        # todo
         cnnmodel = get_file("model","https://github.com/antmsbrito/napari-ehooke/blob/main/docs/cellcycle_cnn_model?raw=true")
         self.model = load_model(cnnmodel)
 
