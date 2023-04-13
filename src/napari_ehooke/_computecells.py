@@ -1,5 +1,5 @@
 """
-TODO
+Module responsible for computing per cell statistics
 """
 import os
 import typing

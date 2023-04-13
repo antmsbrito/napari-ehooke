@@ -1,5 +1,5 @@
 """
-TODO
+Module responsible for computing different segments (labels or cell regions) given a mask. 
 """
 
 import typing

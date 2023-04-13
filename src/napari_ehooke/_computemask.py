@@ -1,5 +1,5 @@
 """
-TODO
+Module responsible for GUI to do mask computation and channel alignment. 
 """
 
 import typing
