@@ -10,54 +10,26 @@ if TYPE_CHECKING:
 
 from magicgui import magic_factory
 
-import numpy as np
-from scipy import ndimage, signal
-from skimage.filters import threshold_isodata, threshold_local
-from skimage.morphology import binary_closing, binary_dilation
-from skimage.transform import EuclideanTransform, warp
+from .ehooke.mask import mask_computation, mask_alignment
 
 @magic_factory(algorithm={"choices":["Isodata","Local Average"]})
-def compute_mask(Viewer:"napari.Viewer",Base:"napari.types.ImageData",Fluor:"napari.types.ImageData",algorithm="Isodata",blocksize:int=151,offset:float=0.02,closing:int=1,dilation:int=0,fillholes:bool=False,autoalign:bool=False)->typing.List["napari.types.LayerDataTuple"]:
-    """
-    TODO    
-    """
-    # TODO MOVE ALL LOGIC TO EHOOKE SUBFOLDER
-    if algorithm == "Isodata":
-
-        mask = Base > threshold_isodata(Base)
-        mask = mask.astype(int)
-        mask = 1 - mask
-
-    elif algorithm == "Local Average":
-        if blocksize%2==0:
-            blocksize += 1
-        mask = Base > threshold_local(Base, block_size=blocksize, method="gaussian", offset=offset)
-        mask = mask.astype(int)
-        mask = 1 - mask
+def compute_mask(Viewer:"napari.Viewer",Base:"napari.layers.Image",Fluor_1:"napari.layers.Image",
+                 Fluor_2:"napari.layers.Image",algorithm="Isodata",blocksize:int=151,offset:float=0.02,closing:int=1,
+                 dilation:int=0,fillholes:bool=False,autoalign:bool=False)->typing.List["napari.types.LayerDataTuple"]:
     
-    if closing > 0:
-        # removes small white spots and then small dark spots
-        closing_matrix = np.ones((int(closing), int(closing)))
-        mask = binary_closing(mask, closing_matrix)
-        mask = 1 - binary_closing(1 - mask, closing_matrix)
-
-    for f in range(dilation):
-        mask = binary_dilation(mask, np.ones((3, 3)))
-
-    if fillholes:
-        mask = ndimage.binary_fill_holes(mask)
-
+    mask = mask_computation(base_image=Base.data,algorithm=algorithm,blocksize=blocksize,
+                            offset=offset,closing=closing,dilation=dilation,fillholes=fillholes)
 
     if autoalign:
-        corr = signal.fftconvolve(mask,Fluor[::-1,::-1])
-        deviation = np.unravel_index(np.argmax(corr),corr.shape)
-        cm = ndimage.center_of_mass(np.ones(corr.shape))
-        
-        dy,dx = np.subtract(deviation,cm)
-        matrix = EuclideanTransform(rotation=0, translation=(dx,dy))
+        aligned_fluor_1 = mask_alignment(mask, Fluor_1.data)
+        aligned_fluor_2 = mask_alignment(mask, Fluor_2.data)
 
-        aligned_fluor = warp(Fluor, matrix.inverse, preserve_range=True) # TODO check if fluor intensity values stay the same
-
-        return [(aligned_fluor,{'name':'Aligned fluor'}, 'Image'),(mask, {'name': 'Mask'}, 'Labels')]
+        if (aligned_fluor_2 == aligned_fluor_1).all():
+            return [(mask, {'name': 'Mask'}, 'Labels'),
+                    (aligned_fluor_1,{'name':'aligned_'+Fluor_1.name},'Image'),]
+        else:
+            return [(mask, {'name': 'Mask'}, 'Labels'),
+                    (aligned_fluor_1,{'name':'aligned_'+Fluor_1.name},'Image'),
+                    (aligned_fluor_2,{'name':'aligned_'+Fluor_2.name},'Image')]
     else:
         return [(mask, {'name': 'Mask'}, 'Labels'),]
