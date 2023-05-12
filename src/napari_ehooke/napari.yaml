@@ -20,6 +20,9 @@ contributions:
     - id: napari-ehooke.compute_cells
       python_name: napari_ehooke._computecells:compute_cells
       title: Compute cells
+    - id: napari-ehooke.filter_cells
+      python_name: napari_ehooke._filtercells:filter_cells
+      title: Filter cells
   sample_data:
     - command: napari-ehooke.phase_example
       display_name: Phase contrast S. aureus
@@ -37,3 +40,5 @@ contributions:
       display_name: Compute features
     - command: napari-ehooke.compute_cells
       display_name: Compute cells
+    - command: napari-ehooke.filter_cells
+      display_name: Filter cells
