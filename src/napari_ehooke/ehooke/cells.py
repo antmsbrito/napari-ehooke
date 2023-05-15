@@ -653,6 +653,7 @@ class CellManager:
         Fluor_Ratio_25 = []
         Fluor_Ratio_10 = []
         CellCyclePhase = []
+        DNARatio = []
         All_Cells = [] # TODO consider always saving
 
         if self.params['classify_cell_cycle']:
@@ -690,6 +691,7 @@ class CellManager:
             else:
                 c.stats['Cell Cycle Phase'] = 0
             CellCyclePhase.append(c.stats['Cell Cycle Phase'])
+            DNARatio.append(self.calculate_DNARatio(c,self.optional_img))
 
         properties = {}
         properties['label'] = np.array(Label)
@@ -705,6 +707,7 @@ class CellManager:
         properties['Fluor Ratio 25%'] = np.array(Fluor_Ratio_25)
         properties['Fluor Ratio 10%'] = np.array(Fluor_Ratio_10)
         properties['Cell Cycle Phase'] = np.array(CellCyclePhase)
+        properties['DNA Ratio'] = np.array(DNARatio)
 
         self.properties = properties
 
@@ -718,3 +721,15 @@ class CellManager:
             if self.params['coloc']:
                 coloc = ColocManager()
                 coloc.compute_pcc(self.fluor_img, self.optional_img,All_Cells,self.params,rm.cell_data_filename)
+
+    @staticmethod
+    def calculate_DNARatio(cell_object, dna_fov):
+
+        thresh = threshold_isodata(dna_fov[np.nonzero(dna_fov)])
+        x0, y0, x1, y1 = cell_object.box
+        cell_mask = cell_object.cell_mask
+        optional_cell = dna_fov[x0:x1 + 1, y0:y1 + 1]
+        optional_signal = (optional_cell * cell_mask) > thresh
+
+        return np.sum(optional_signal) / np.sum(cell_mask)
+           
