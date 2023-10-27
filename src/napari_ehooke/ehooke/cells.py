@@ -657,17 +657,20 @@ class CellManager:
         All_Cells = [] # TODO consider always saving
 
         if self.params['classify_cell_cycle']:
+            print("Cell cycle...")
             ccc = CellCycleClassifier(self.fluor_img, self.optional_img, self.params['microscope'])
         if self.params['cell_averager']:
+            print("Cell averager...")
             ca = CellAverager()
 
+        print("Per cell stats...")
         for l in np.unique(self.label_img):
 
             if l == 0: # BG
                 continue
 
             mask = self.label_img==l
-            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, params=self.params)
+            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, params=self.params) 
             
             if self.params['generate_report']:
                 All_Cells.append(c)
