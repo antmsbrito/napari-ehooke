@@ -22,11 +22,12 @@ from .reports import ReportManager
 class Cell:
     """Template for each cell object."""
 
-    def __init__(self, label, regionmask, intensity, params):
+    def __init__(self, label, regionmask, intensity, params, optional=None):
         
         self.label = label
         self.mask = regionmask.astype(int)
         self.fluor = intensity
+        self.optional = optional
 
         self.params = params
 
@@ -637,6 +638,8 @@ class CellManager:
         self.properties = None
         self.heatmap_model = None
 
+        self.random_sample = []
+
 
     def compute_cell_properties(self):
 
@@ -664,18 +667,26 @@ class CellManager:
             ca = CellAverager()
 
         print("Per cell stats...")
-        for l in np.unique(self.label_img):
+        label_list = np.unique(self.label_img)
+        for i,l in enumerate(label_list):
 
             if l == 0: # BG
                 continue
 
             mask = self.label_img==l
-            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, params=self.params) 
+            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, params=self.params, optional=self.optional_img) 
             
             if self.params['generate_report']:
                 All_Cells.append(c)
             if self.params['cell_averager']:
                 ca.align(c)
+            if self.params['random_sample']:
+                if len(self.random_sample)>int(0.25*len(label_list)):
+                    j = np.random.randint(0,i)
+                    if j <= int(0.25*len(label_list))-1:
+                        self.random_sample[j] = c
+                else:
+                    self.random_sample.append(c)
 
             Label.append(c.label)
             Area.append(c.stats['Area'])
@@ -720,10 +731,14 @@ class CellManager:
 
         if self.params['generate_report']:
             rm = ReportManager(parameters=self.params,cells=All_Cells)
-            rm.generate_report(self.params['report_path'])
+            rm.generate_report(self.params['report_path'], report_id=self.params['report_id'])
             if self.params['coloc']:
                 coloc = ColocManager()
                 coloc.compute_pcc(self.fluor_img, self.optional_img,All_Cells,self.params,rm.cell_data_filename)
+
+        if self.params['random_sample']:
+            rm = ReportManager(parameters=self.params,cells=self.random_sample)
+            rm.generate_report(self.params['report_path'],"RANDOM_SAMPLE")
 
     @staticmethod
     def calculate_DNARatio(cell_object, dna_fov):
