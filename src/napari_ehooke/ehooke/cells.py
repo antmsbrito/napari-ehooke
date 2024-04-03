@@ -696,7 +696,7 @@ class CellManager:
             ccc = CellCycleClassifier(self.fluor_img, self.optional_img, self.params['microscope'])
         if self.params['cell_averager']:
             print("Cell averager...")
-            ca = CellAverager()
+            ca = CellAverager(self.fluor_img)
 
         print("Per cell stats...")
         label_list = np.unique(self.label_img)

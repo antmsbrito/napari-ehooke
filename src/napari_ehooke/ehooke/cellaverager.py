@@ -10,15 +10,16 @@ class CellAverager:
     Class in charge of building an average heatmap 
     """
 
-    def __init__(self):
+    def __init__(self, fluor):
         
+        self.fluor = fluor
         self.model = None
         self.aligned_fluor_masks = []
 
     def align(self, cell):
 
         angle = self.calculate_rotation_angle(cell)
-        self.aligned_fluor_masks.append(rotate(cell.image_box(cell.fluor) * cell.cell_mask, angle))
+        self.aligned_fluor_masks.append(rotate(cell.image_box(self.fluor) * cell.cell_mask, angle))
 
     def average(self):
 
@@ -35,7 +36,7 @@ class CellAverager:
         self.model = model_cell
 
     def calculate_rotation_angle(self, cell):
-        binary = cell.image_box(cell.fluor) * cell.cell_mask
+        binary = cell.image_box(self.fluor) * cell.cell_mask
         outline = self.calculate_cell_outline(binary)
         major_axis = self.calculate_major_axis(outline)
         return self.calculate_axis_angle(major_axis)
