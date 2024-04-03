@@ -7,6 +7,7 @@ from skimage.color import gray2rgb
 from decimal import Decimal
 import numpy as np
 import os
+from tifffile import imwrite
 
 from .cellprocessing import stats_format
 
@@ -56,6 +57,16 @@ class ReportManager:
                 if cell.selection_state == 1:
                     cellid = str(int(cell.label))
                     img = img_as_float(cell.image)
+
+                    """
+                    x0, y0, x1, y1 = cell.box
+                    memb_img = cell.fluor[x0:x1 + 1, y0:y1 + 1]
+                    dna_img = cell.optional[x0:x1 + 1, y0:y1 + 1]
+                    imwrite(filename + "/_images/membrane" + os.sep + cellid + '.tif', memb_img)
+                    imwrite(filename + "/_images/dna" + os.sep + cellid + '.tif', dna_img)
+                    imsave(filename + "/_images/crops" + os.sep + cellid + '.png', img)
+                    """
+                    
                     imsave(filename + "/_images" +
                            os.sep + cellid + '.png', img)
                     lin = '<tr><td>' + cellid + '</td><td><img src="./' + '_images/' + \
@@ -161,6 +172,9 @@ class ReportManager:
 
             if not os.path.exists(filename + "/_images"):
                 os.makedirs(filename + "/_images")
+                os.makedirs(filename + "/_images/membrane")
+                os.makedirs(filename + "/_images/dna")
+                os.makedirs(filename + "/_images/crops")
             if not os.path.exists(filename + "/_rejected_images"):
                 os.makedirs(filename + "/_rejected_images")
         else:
@@ -170,6 +184,9 @@ class ReportManager:
 
             if not os.path.exists(filename + "/_images"):
                 os.makedirs(filename + "/_images")
+                os.makedirs(filename + "/_images/membrane")
+                os.makedirs(filename + "/_images/dna")
+                os.makedirs(filename + "/_images/crops")
             if not os.path.exists(filename + "/_rejected_images"):
                 os.makedirs(filename + "/_rejected_images")
 
