@@ -24,10 +24,12 @@ class Cell:
 
     def __init__(self, label, regionmask, intensity, params, optional=None):
         
-        self.label = label
-        self.mask = regionmask.astype(int)
-        self.fluor = intensity
-        self.optional = optional
+        self.label = label 
+
+        # THESE 3 PARAMETERS HAVE TO GO
+        #self.mask = regionmask.astype(int)
+        #self.fluor = intensity
+        #self.optional = optional
 
         self.params = params
 
@@ -37,7 +39,8 @@ class Cell:
 
         self.box = properties.bbox # (min_row, min_col, max_row, max_col)
        
-        w,h = self.fluor.shape
+        w,h = intensity.shape
+        self.img_shape = intensity.shape
         self.box = (max(self.box[0] - self.box_margin, 0),
                     max(self.box[1] - self.box_margin, 0),
                     min(self.box[2] + self.box_margin, w - 1),
@@ -62,7 +65,10 @@ class Cell:
 
         # CHECK IF SHORT AXIS AND LONG AXIS ARE OUTSIDE OF BOX TODO
 
-        self.cell_mask = self.image_box(self.mask)
+        self.cell_mask = self.image_box(regionmask.astype(int))
+        self.fluor_mask = self.image_box(intensity)
+        self.optional_mask = self.image_box(optional)
+
         self.perim_mask = None
         self.sept_mask = None
         self.cyto_mask = None
@@ -85,10 +91,10 @@ class Cell:
         
         self.selection_state = 1
         self.compute_regions(self.params)
-        self.compute_fluor_stats(self.params)
+        self.compute_fluor_stats(self.params, regionmask.astype(int), intensity)
 
         self.image = None
-        self.set_image()
+        self.set_image(intensity,optional)
 
 
     def image_box(self, image):
@@ -100,10 +106,11 @@ class Cell:
         except TypeError:
             return None
 
-    def compute_perim_mask(self, mask, thick):
+    def compute_perim_mask(self, thick):
         """returns mask for perimeter
             needs cell mask
         """
+        mask = self.cell_mask
 
         eroded = morphology.binary_erosion(mask, np.ones(
             (thick * 2 - 1, thick - 1))).astype(float)
@@ -111,10 +118,12 @@ class Cell:
 
         return perim
 
-    def compute_sept_mask(self, mask, thick, algorithm):
+    def compute_sept_mask(self, thick, algorithm):
         """ returns mask for axis.
         needs cell mask
         """
+
+        mask = self.cell_mask
 
         if algorithm == "Isodata":
             return self.compute_sept_isodata(mask, thick)
@@ -125,11 +134,13 @@ class Cell:
         else:
             print("Not a a valid algorithm")
 
-    def compute_opensept_mask(self, mask, thick, algorithm):
+    def compute_opensept_mask(self, thick, algorithm):
         """ 
         returns mask for axis.
         needs cell mask
         """
+
+        mask = self.cell_mask
 
         if algorithm == "Isodata":
             return self.compute_opensept_isodata(mask, thick)
@@ -139,12 +150,12 @@ class Cell:
         else:
             print("Not a a valid algorithm")
 
-    def compute_sept_isodata(self, mask, thick):
+    def compute_sept_isodata(self, thick):
         """Method used to create the cell sept_mask using the threshold_isodata
         to separate the cytoplasm from the septum"""
-        cell_mask = mask
-        fluor_box = self.image_box(self.fluor)
-        perim_mask = self.compute_perim_mask(cell_mask, thick)
+        cell_mask = self.cell_mask
+        fluor_box = self.fluor_mask
+        perim_mask = self.compute_perim_mask(thick)
         inner_mask = cell_mask - perim_mask
         inner_fluor = (inner_mask > 0) * fluor_box
 
@@ -163,12 +174,12 @@ class Cell:
 
         return img_as_float(label_matrix == interest_label)
 
-    def compute_opensept_isodata(self, mask, thick):
+    def compute_opensept_isodata(self, thick):
         """Method used to create the cell sept_mask using the threshold_isodata
         to separate the cytoplasm from the septum"""
-        cell_mask = mask
-        fluor_box = self.image_box(self.fluor)
-        perim_mask = self.compute_perim_mask(cell_mask, thick)
+        cell_mask = self.cell_mask
+        fluor_box = self.fluor_mask
+        perim_mask = self.compute_perim_mask(thick)
         inner_mask = cell_mask - perim_mask
         inner_fluor = (inner_mask > 0) * fluor_box
 
@@ -205,10 +216,13 @@ class Cell:
         else:
             return img_as_float((label_matrix == first_label))
 
-    def compute_sept_box(self, mask, thick):
+    def compute_sept_box(self, thick):
         """Method used to create a mask of the septum based on creating a box
         around the cell and then defining the septum as being the dilated short
         axis of the box."""
+
+        mask = self.cell_mask
+
         x0, y0, x1, y1 = self.box
         lx0, ly0 = self.short_axis[0]
         lx1, ly1 = self.short_axis[1]
@@ -425,62 +439,62 @@ class Cell:
                     linmask, np.ones((bin_factor, bin_factor))).astype(float)
         return img_as_float(linmask)
 
-    def recursive_compute_sept(self, cell_mask, inner_mask_thickness,algorithm):
+    def recursive_compute_sept(self, inner_mask_thickness,algorithm):
         try:
-            self.sept_mask = self.compute_sept_mask(cell_mask,inner_mask_thickness,algorithm)
+            self.sept_mask = self.compute_sept_mask(inner_mask_thickness,algorithm)
         except IndexError:
             try:
-                self.recursive_compute_sept(cell_mask, inner_mask_thickness - 1, algorithm)
+                self.recursive_compute_sept(inner_mask_thickness - 1, algorithm)
             except RuntimeError:
-                self.recursive_compute_sept(cell_mask, inner_mask_thickness - 1, "Box")
+                self.recursive_compute_sept(inner_mask_thickness - 1, "Box")
 
-    def recursive_compute_opensept(self, cell_mask, inner_mask_thickness,algorithm):
+    def recursive_compute_opensept(self, inner_mask_thickness,algorithm):
         try:
-            self.sept_mask = self.compute_opensept_mask(cell_mask,inner_mask_thickness,algorithm)
+            self.sept_mask = self.compute_opensept_mask(inner_mask_thickness,algorithm)
         except IndexError:
             try:
-                self.recursive_compute_opensept(cell_mask, inner_mask_thickness - 1,algorithm)
+                self.recursive_compute_opensept(inner_mask_thickness - 1,algorithm)
             except RuntimeError:
-                self.recursive_compute_opensept(cell_mask, inner_mask_thickness - 1, "Box")
+                self.recursive_compute_opensept(inner_mask_thickness - 1, "Box")
 
     def compute_regions(self, params):
         """Computes each different region of the cell (whole cell, membrane,
         septum, cytoplasm) and creates their respectives masks."""
 
         if params["find_septum"]:
-            self.recursive_compute_sept(self.cell_mask,params["inner_mask_thickness"],params["septum_algorithm"])
+            self.recursive_compute_sept(params["inner_mask_thickness"],params["septum_algorithm"])
 
             if params["septum_algorithm"] == "Isodata":
-                self.perim_mask = self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"])
+                self.perim_mask = self.compute_perim_mask(params["inner_mask_thickness"])
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
-                linmask = self.remove_sept_from_membrane(self.fluor.shape)
+                linmask = self.remove_sept_from_membrane(self.img_shape)
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
                 if linmask is not None:
                     old_membrane = self.perim_mask
                     self.perim_mask = (old_membrane - linmask) > 0
             else:
-                self.perim_mask = (self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"]) - self.sept_mask) > 0
+                self.perim_mask = (self.compute_perim_mask(params["inner_mask_thickness"]) - self.sept_mask) > 0
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
         elif params["find_openseptum"]:
-            self.recursive_compute_opensept(self.cell_mask,params["inner_mask_thickness"],params["septum_algorithm"])
+            self.recursive_compute_opensept(params["inner_mask_thickness"],params["septum_algorithm"])
 
             if params["septum_algorithm"] == "Isodata":
-                self.perim_mask = self.compute_perim_mask(self.cell_mask,params["inner_mask_thickness"])
+                self.perim_mask = self.compute_perim_mask(params["inner_mask_thickness"])
 
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
-                linmask = self.remove_sept_from_membrane(self.fluor.shape)
+                linmask = self.remove_sept_from_membrane(self.img_shape)
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
                 if linmask is not None:
                     old_membrane = self.perim_mask
                     self.perim_mask = (old_membrane - linmask) > 0
             else:
-                self.perim_mask = (self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"]) - self.sept_mask) > 0
+                self.perim_mask = (self.compute_perim_mask(params["inner_mask_thickness"]) - self.sept_mask) > 0
                 self.membsept_mask = (self.perim_mask + self.sept_mask) > 0
                 self.cyto_mask = (self.cell_mask - self.perim_mask - self.sept_mask) > 0
         else:
             self.sept_mask = None
-            self.perim_mask = self.compute_perim_mask(self.cell_mask, params["inner_mask_thickness"])
+            self.perim_mask = self.compute_perim_mask(params["inner_mask_thickness"])
             self.cyto_mask = (self.cell_mask - self.perim_mask) > 0
 
     def compute_fluor_baseline(self, mask, fluor, margin):
@@ -536,13 +550,13 @@ class Cell:
         else:
             return 0
 
-    def compute_fluor_stats(self, params):
+    def compute_fluor_stats(self, params, mask, fluor):
         """Computes the cell stats related to the fluorescence"""
-        self.compute_fluor_baseline(self.mask,
-                                    self.fluor,
+        self.compute_fluor_baseline(mask,
+                                    fluor,
                                     params["baseline_margin"])
 
-        fluorbox = self.image_box(self.fluor)
+        fluorbox = self.fluor_mask
 
         self.stats["Cell Median"] = \
             self.measure_fluor(fluorbox, self.cell_mask) - \
@@ -586,30 +600,48 @@ class Cell:
 
             self.stats["Memb+Sept Median"] = 0
 
-    def set_image(self):
+    def set_image(self, fluor, optional):
 
-        fluor = img_as_float(self.fluor)
+        fluor = img_as_float(fluor)
         fluor = exposure.rescale_intensity(fluor)
 
-        x0, y0, x1, y1 = self.box
-        img = color.gray2rgb(np.zeros((x1 - x0 + 1, 5 * (y1 - y0 + 1))))
-        bx0 = 0
-        bx1 = x1 - x0 + 1
-        by0 = 0
-        by1 = y1 - y0 + 1
-
-        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1])
-        by0 = by0 + y1 - y0 + 1
-        by1 = by1 + y1 - y0 + 1
+        optional = img_as_float(optional)
+        optional = exposure.rescale_intensity(optional)
 
         perim = self.perim_mask
         axial = self.sept_mask
         cyto = self.cyto_mask
 
+        x0, y0, x1, y1 = self.box
+        img = color.gray2rgb(np.zeros((x1 - x0 + 1, 7 * (y1 - y0 + 1))))
+        bx0 = 0
+        bx1 = x1 - x0 + 1
+        by0 = 0
+        by1 = y1 - y0 + 1
+
+        # 7 images
+
+        # #1 is the fluorescence 
+        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1])
+        by0 = by0 + y1 - y0 + 1
+        by1 = by1 + y1 - y0 + 1
+        
+        # #2 is the fluorescence segmented
         img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * self.cell_mask)
         by0 = by0 + y1 - y0 + 1
         by1 = by1 + y1 - y0 + 1
 
+        # #3 is the dna
+        img[bx0:bx1, by0:by1] = color.gray2rgb(optional[x0:x1 + 1, y0:y1 + 1])
+        by0 = by0 + y1 - y0 + 1
+        by1 = by1 + y1 - y0 + 1
+
+        # #4 is the dna segmented
+        img[bx0:bx1, by0:by1] = color.gray2rgb(optional[x0:x1 + 1, y0:y1 + 1] * self.cell_mask)
+        by0 = by0 + y1 - y0 + 1
+        by1 = by1 + y1 - y0 + 1
+
+        # 5,6,7 is perimeter, cytoplasm and septa
         img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * perim)
         by0 = by0 + y1 - y0 + 1
         by1 = by1 + y1 - y0 + 1
@@ -638,7 +670,7 @@ class CellManager:
         self.properties = None
         self.heatmap_model = None
 
-        self.random_sample = []
+        #self.random_sample = []
 
 
     def compute_cell_properties(self):
@@ -680,13 +712,13 @@ class CellManager:
                 All_Cells.append(c)
             if self.params['cell_averager']:
                 ca.align(c)
-            if self.params['random_sample']:
-                if len(self.random_sample)>int(0.25*len(label_list)):
-                    j = np.random.randint(0,i)
-                    if j <= int(0.25*len(label_list))-1:
-                        self.random_sample[j] = c
-                else:
-                    self.random_sample.append(c)
+            # if self.params['random_sample']:
+            #     if len(self.random_sample)>int(0.25*len(label_list)):
+            #         j = np.random.randint(0,i)
+            #         if j <= int(0.25*len(label_list))-1:
+            #             self.random_sample[j] = c
+            #     else:
+            #         self.random_sample.append(c)
 
             Label.append(c.label)
             Area.append(c.stats['Area'])
@@ -731,14 +763,14 @@ class CellManager:
 
         if self.params['generate_report']:
             rm = ReportManager(parameters=self.params,cells=All_Cells)
-            rm.generate_report(self.params['report_path'], report_id=self.params['report_id'])
+            rm.generate_report(self.params['report_path'], report_id=self.params.get('report_id',None))
             if self.params['coloc']:
                 coloc = ColocManager()
                 coloc.compute_pcc(self.fluor_img, self.optional_img,All_Cells,self.params,rm.cell_data_filename)
 
-        if self.params['random_sample']:
-            rm = ReportManager(parameters=self.params,cells=self.random_sample)
-            rm.generate_report(self.params['report_path'],"RANDOM_SAMPLE")
+        # if self.params['random_sample']:
+        #     rm = ReportManager(parameters=self.params,cells=self.random_sample)
+        #     rm.generate_report(self.params['report_path'],"RANDOM_SAMPLE")
 
     @staticmethod
     def calculate_DNARatio(cell_object, dna_fov):
