@@ -6,6 +6,8 @@ import numpy as np
 
 import pandas as pd
 
+from scipy import ndimage
+
 from skimage.measure import regionprops_table, label, regionprops
 from skimage.filters import threshold_isodata
 from skimage.util import img_as_float, img_as_int
@@ -22,7 +24,7 @@ from .reports import ReportManager
 class Cell:
     """Template for each cell object."""
 
-    def __init__(self, label, regionmask, intensity, params, optional=None):
+    def __init__(self, label, regionmask, properties, intensity, params, optional=None):
         
         self.label = label 
 
@@ -35,9 +37,9 @@ class Cell:
 
         self.box_margin = 5
 
-        properties = regionprops(regionmask.astype(int), intensity)[0]
+        #properties = regionprops(regionmask, intensity)[0]
 
-        self.box = properties.bbox # (min_row, min_col, max_row, max_col)
+        self.box = (properties['bbox-0'].item(),properties['bbox-1'].item(),properties['bbox-2'].item(),properties['bbox-3'].item()) # (min_row, min_col, max_row, max_col)
        
         w,h = intensity.shape
         self.img_shape = intensity.shape
@@ -46,26 +48,26 @@ class Cell:
                     min(self.box[2] + self.box_margin, w - 1),
                     min(self.box[3] + self.box_margin, h - 1))
         
-        y0, x0 = properties.centroid
-        x1 = x0 + math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
-        y1 = y0 - math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
-        x2 = x0 - math.cos(properties.orientation) * 0.5 * properties.axis_minor_length
-        y2 = y0 + math.sin(properties.orientation) * 0.5 * properties.axis_minor_length
+        y0, x0 = (properties['centroid-0'].item(),properties['centroid-1'].item())
+        x1 = x0 + math.cos(properties['orientation'].item()) * 0.5 * properties['axis_minor_length'].item()
+        y1 = y0 - math.sin(properties['orientation'].item()) * 0.5 * properties['axis_minor_length'].item()
+        x2 = x0 - math.cos(properties['orientation'].item()) * 0.5 * properties['axis_minor_length'].item()
+        y2 = y0 + math.sin(properties['orientation'].item()) * 0.5 * properties['axis_minor_length'].item()
 
         # NOTE THE SWAP ON X AND Y 
         self.long_axis = np.rint(np.array([[y1,x1],[y2,x2]])).astype(int)
         
-        x1 = x0 - math.sin(properties.orientation) * 0.5 * properties.axis_major_length
-        y1 = y0 - math.cos(properties.orientation) * 0.5 * properties.axis_major_length
-        x2 = x0 + math.sin(properties.orientation) * 0.5 * properties.axis_major_length
-        y2 = y0 + math.cos(properties.orientation) * 0.5 * properties.axis_major_length
+        x1 = x0 - math.sin(properties['orientation'].item()) * 0.5 * properties['axis_major_length'].item()
+        y1 = y0 - math.cos(properties['orientation'].item()) * 0.5 * properties['axis_major_length'].item()
+        x2 = x0 + math.sin(properties['orientation'].item()) * 0.5 * properties['axis_major_length'].item()
+        y2 = y0 + math.cos(properties['orientation'].item()) * 0.5 * properties['axis_major_length'].item()
         
         # NOTE THE SWAP ON X AND Y 
         self.short_axis = np.rint(np.array([[y1,x1],[y2,x2]])).astype(int)
 
         # CHECK IF SHORT AXIS AND LONG AXIS ARE OUTSIDE OF BOX TODO
 
-        self.cell_mask = self.image_box(regionmask.astype(int))
+        self.cell_mask = self.image_box(regionmask)
         self.fluor_mask = self.image_box(intensity)
         self.optional_mask = self.image_box(optional)
 
@@ -84,14 +86,14 @@ class Cell:
                            ("Fluor Ratio 25%", 0),
                            ("Fluor Ratio 10%", 0),
                            ("Cell Cycle Phase", 0),
-                           ("Area",properties.area),
-                           ("Perimeter",properties.perimeter),
-                           ("Eccentricity",properties.eccentricity),
+                           ("Area",properties['area'].item()),
+                           ("Perimeter",properties['perimeter'].item()),
+                           ("Eccentricity",properties['eccentricity'].item()),
                            ])
         
         self.selection_state = 1
         self.compute_regions(self.params)
-        self.compute_fluor_stats(self.params, regionmask.astype(int), intensity)
+        self.compute_fluor_stats(self.params, regionmask, intensity)
 
         self.image = None
         self.set_image(intensity,optional)
@@ -603,10 +605,10 @@ class Cell:
     def set_image(self, fluor, optional):
 
         fluor = img_as_float(fluor)
-        fluor = exposure.rescale_intensity(fluor)
+        #fluor = exposure.rescale_intensity(fluor)
 
         optional = img_as_float(optional)
-        optional = exposure.rescale_intensity(optional)
+        #optional = exposure.rescale_intensity(optional)
 
         perim = self.perim_mask
         axial = self.sept_mask
@@ -670,8 +672,6 @@ class CellManager:
         self.properties = None
         self.heatmap_model = None
 
-        #self.random_sample = []
-
 
     def compute_cell_properties(self):
 
@@ -680,6 +680,7 @@ class CellManager:
         Perimeter = []
         Eccentricity = []
         Baseline = []
+        CellMedian = []
         Membrane_Median = []
         Septum_Median = []
         Cytoplasm_Median = [] 
@@ -691,12 +692,17 @@ class CellManager:
         DNARatio = []
         All_Cells = [] # TODO consider always saving
 
+        CellsImage = []
+
         if self.params['classify_cell_cycle']:
             print("Cell cycle...")
             ccc = CellCycleClassifier(self.fluor_img, self.optional_img, self.params['microscope'])
         if self.params['cell_averager']:
             print("Cell averager...")
             ca = CellAverager(self.fluor_img)
+
+        dnathresh = threshold_isodata(self.optional_img[np.nonzero(self.optional_img)])
+        proptable = pd.DataFrame(regionprops_table(self.label_img,properties=['label','bbox','centroid','orientation','axis_minor_length','axis_major_length','area','perimeter','eccentricity']))
 
         print("Per cell stats...")
         label_list = np.unique(self.label_img)
@@ -705,26 +711,21 @@ class CellManager:
             if l == 0: # BG
                 continue
 
-            mask = self.label_img==l
-            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, params=self.params, optional=self.optional_img) 
+            mask = (self.label_img==l).astype(int)
+            c = Cell(label=l, regionmask=mask, intensity=self.fluor_img, properties=proptable[proptable['label']==l], params=self.params, optional=self.optional_img) 
             
             if self.params['generate_report']:
+                #CellsImage.append(resize(c.image,(50,350)))
                 All_Cells.append(c)
             if self.params['cell_averager']:
                 ca.align(c)
-            # if self.params['random_sample']:
-            #     if len(self.random_sample)>int(0.25*len(label_list)):
-            #         j = np.random.randint(0,i)
-            #         if j <= int(0.25*len(label_list))-1:
-            #             self.random_sample[j] = c
-            #     else:
-            #         self.random_sample.append(c)
 
             Label.append(c.label)
             Area.append(c.stats['Area'])
             Perimeter.append(c.stats['Perimeter'])
             Eccentricity.append(c.stats['Eccentricity'])
             Baseline.append(c.stats['Baseline'])
+            CellMedian.append(c.stats['Cell Median'])
             Membrane_Median.append(c.stats['Membrane Median'])
             Septum_Median.append(c.stats['Septum Median'])
             Cytoplasm_Median.append(c.stats['Cytoplasm Median'])
@@ -737,7 +738,7 @@ class CellManager:
             else:
                 c.stats['Cell Cycle Phase'] = 0
             CellCyclePhase.append(c.stats['Cell Cycle Phase'])
-            DNARatio.append(self.calculate_DNARatio(c,self.optional_img))
+            DNARatio.append(self.calculate_DNARatio(c,self.optional_img,dnathresh))
 
         properties = {}
         properties['label'] = np.array(Label)
@@ -745,6 +746,7 @@ class CellManager:
         properties['Perimeter'] = np.array(Perimeter)
         properties['Eccentricity'] = np.array(Eccentricity)
         properties['Baseline'] = np.array(Baseline)
+        properties['Cell Median'] = np.array(CellMedian)
         properties['Membrane Median'] = np.array(Membrane_Median)
         properties['Septum Median'] = np.array(Septum_Median)
         properties['Cytoplasm Median'] = np.array(Cytoplasm_Median)
@@ -762,20 +764,17 @@ class CellManager:
             self.heatmap_model = ca.model
 
         if self.params['generate_report']:
-            rm = ReportManager(parameters=self.params,cells=All_Cells)
+            rm = ReportManager(parameters=self.params,properties=self.properties,allcells=All_Cells)
             rm.generate_report(self.params['report_path'], report_id=self.params.get('report_id',None))
             if self.params['coloc']:
                 coloc = ColocManager()
                 coloc.compute_pcc(self.fluor_img, self.optional_img,All_Cells,self.params,rm.cell_data_filename)
 
-        # if self.params['random_sample']:
-        #     rm = ReportManager(parameters=self.params,cells=self.random_sample)
-        #     rm.generate_report(self.params['report_path'],"RANDOM_SAMPLE")
+
 
     @staticmethod
-    def calculate_DNARatio(cell_object, dna_fov):
+    def calculate_DNARatio(cell_object, dna_fov,thresh):
 
-        thresh = threshold_isodata(dna_fov[np.nonzero(dna_fov)])
         x0, y0, x1, y1 = cell_object.box
         cell_mask = cell_object.cell_mask
         optional_cell = dna_fov[x0:x1 + 1, y0:y1 + 1]
