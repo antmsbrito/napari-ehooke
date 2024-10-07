@@ -33,6 +33,10 @@ class filter_cells(Container):
 
         self.changed.connect(self._on_changed)
 
+        self._current_layer = viewer.layers.selection.active.data
+        self._current_layer_properties = viewer.layers.selection.active.properties
+        self._viewer.add_labels(self._current_layer, name="Filtered Cells")
+
     def _on_label_layer_changed(self, new_layer: "napari.layers.Labels"):
         while self.__len__() > 2:
             self.pop()
