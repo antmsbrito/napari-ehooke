@@ -87,9 +87,9 @@ class CellCycleClassifier:
         
         x0, y0, x1, y1 = cell_object.box
 
-        fluor = rescale_intensity(self.fluor_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask)
-        optional = rescale_intensity(self.optional_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask)
-
+        fluor = rescale_intensity(img_as_float(self.fluor_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask))
+        optional = rescale_intensity(img_as_float(self.optional_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask))
+        
         fluor_img = skresize(self.preprocess_image(fluor),
                              (100, 100),
                              order=0,
