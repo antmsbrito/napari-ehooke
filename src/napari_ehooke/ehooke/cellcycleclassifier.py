@@ -19,27 +19,36 @@ tf.config.set_visible_devices([], 'GPU')
 
 class CellCycleClassifier:
 
-    def __init__(self, fluor_fov, optional_fov, microscope):
+    def __init__(self, fluor_fov, optional_fov, model, model_path, model_input, max_dim):
 
-        cnnmodel = get_file("model","https://github.com/antmsbrito/napari-ehooke/blob/main/docs/cellcycle_cnn_model?raw=true")
-        self.model = load_model(cnnmodel)
+        if model == "custom":
+            self.model = load_model(model_path)
+            self.microscope = "custom"
+            self.max_dim = max_dim
+            self.model_input = model_input
+
+        else:
+
+            self.cnnmodel = get_file("model","https://github.com/antmsbrito/napari-ehooke/blob/main/docs/cellcycle_cnn_model?raw=true")
+            self.model = load_model(self.cnnmodel)
+
+            if model == "S.aureus Epifluorescence":
+                self.max_dim = 50
+                self.model_input = "Membrane+DNA"
+            elif model == "S.aureus SIM":
+                self.max_dim = 100
+                self.model_input = "Membrane+DNA"
+
 
         self.fluor_fov = fluor_fov
         self.optional_fov = optional_fov
 
-        self.microscope = microscope
 
     def preprocess_image(self, image):
 
-        if self.microscope == "Epi":
-            max_dim = 50
-
-        elif self.microscope == "SIM":
-            max_dim = 100
-
         h, w = image.shape
 
-        max_h, max_w = max_dim, max_dim
+        max_h, max_w = self.max_dim, self.max_dim
 
         lines_to_add = max_h - h
         columns_to_add = max_w - w
@@ -63,11 +72,11 @@ class CellCycleClassifier:
 
         if columns_to_add > 0:
             if columns_to_add % 2 == 0:
-                columns_to_add = np.zeros((max_dim, int(columns_to_add / 2)))
+                columns_to_add = np.zeros((self.max_dim, int(columns_to_add / 2)))
                 image = np.concatenate((columns_to_add, image, columns_to_add), axis=1)
             else:
-                columns_to_add_left = np.zeros((max_dim, int(columns_to_add / 2) + 1))
-                columns_to_add_right = np.zeros((max_dim, int(columns_to_add / 2)))
+                columns_to_add_left = np.zeros((self.max_dim, int(columns_to_add / 2) + 1))
+                columns_to_add_right = np.zeros((self.max_dim, int(columns_to_add / 2)))
                 image = np.concatenate((columns_to_add_left, image, columns_to_add_right), axis=1)
 
         elif columns_to_add < 0:
@@ -79,31 +88,39 @@ class CellCycleClassifier:
                 image = image[:, cutsize:w - cutsize - 1]
 
         image = img_as_float(image)
-        image = image.reshape(max_dim, max_dim, 1)
+        image = image.reshape(self.max_dim, self.max_dim, 1)
 
         return image
 
     def classify_cell(self, cell_object):
         
         x0, y0, x1, y1 = cell_object.box
+        fluor = None
+        optional = None
 
-        fluor = rescale_intensity(img_as_float(self.fluor_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask))
-        optional = rescale_intensity(img_as_float(self.optional_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask))
-        
-        fluor_img = skresize(self.preprocess_image(fluor),
+        if "Membrane" in self.model_input:
+            fluor = rescale_intensity(img_as_float(self.fluor_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask))
+            fluor_img = skresize(self.preprocess_image(fluor),
                              (100, 100),
                              order=0,
                              preserve_range=True,
                              anti_aliasing=False,
                              anti_aliasing_sigma=None)
-
-        optional_img = skresize(self.preprocess_image(optional),
+        
+        if "DNA" in self.model_input:
+            optional = rescale_intensity(img_as_float(self.optional_fov[x0:x1 + 1, y0:y1 + 1] * cell_object.cell_mask))
+            optional_img = skresize(self.preprocess_image(optional),
                                 (100, 100),
                                 order=0,
                                 preserve_range=True,
                                 anti_aliasing=False,
                                 anti_aliasing_sigma=None)
 
-        pred = self.model.predict(np.concatenate((fluor_img, optional_img), axis=1).reshape(-1, 100, 200, 1), verbose=0)
+        if self.model_input == "Membrane":
+            pred = self.model.predict(fluor_img.reshape(-1, 100, 100, 1), verbose=0)
+        elif self.model_input == "DNA":
+            pred = self.model.predict(optional_img.reshape(-1, 100, 100, 1), verbose=0)
+        elif self.model_input == "Membrane+DNA":    
+            pred = self.model.predict(np.concatenate((fluor_img, optional_img), axis=1).reshape(-1, 100, 200, 1), verbose=0)
         
         return np.argmax(pred,axis=-1)[0] + 1
