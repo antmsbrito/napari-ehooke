@@ -21,23 +21,28 @@ class CellCycleClassifier:
 
     def __init__(self, fluor_fov, optional_fov, model, model_path, model_input, max_dim):
 
+        self.prebuilts_config = {
+        "S.aureus DNA+Membrane Epi": {"max_dim": 50, "model_input": "Membrane+DNA",'model_path':'https://github.com/antmsbrito/napari-ehooke/blob/main/docs/cellcycle_cnn_model?raw=true'},
+        "S.aureus DNA+Membrane SIM": {"max_dim": 100, "model_input": "Membrane+DNA",'model_path':'https://github.com/antmsbrito/napari-ehooke/blob/main/docs/cellcycle_cnn_model?raw=true'},
+        
+        "S.aureus DNA Epi": {"max_dim": 50, "model_input": "DNA",'model_path':'https://github.com/antmsbrito/napari-ehooke/blob/main/docs/dna_only_cellcycle_model.keras?raw=true'},
+        "S.aureus DNA SIM": {"max_dim": 100, "model_input": "DNA",'model_path':'https://github.com/antmsbrito/napari-ehooke/blob/main/docs/dna_only_cellcycle_model.keras?raw=true'},
+        
+        "S.aureus Membrane Epi": {"max_dim": 50, "model_input": "Membrane",'model_path':'https://github.com/antmsbrito/napari-ehooke/blob/main/docs/membrane_only_cellcycle_model.keras?raw=true'},
+        "S.aureus Membrane SIM": {"max_dim": 100, "model_input": "Membrane",'model_path':'https://github.com/antmsbrito/napari-ehooke/blob/main/docs/membrane_only_cellcycle_model.keras?raw=true'},
+        }
+
+
         if model == "custom":
             self.model = load_model(model_path)
-            self.microscope = "custom"
             self.max_dim = max_dim
             self.model_input = model_input
-
         else:
-
-            self.cnnmodel = get_file("model","https://github.com/antmsbrito/napari-ehooke/blob/main/docs/cellcycle_cnn_model?raw=true")
+            self.cnnmodel = get_file(model, self.prebuilts_config[model]["model_path"])
             self.model = load_model(self.cnnmodel)
+            self.max_dim = self.prebuilts_config[model]["max_dim"]
+            self.model_input = self.prebuilts_config[model]["model_input"]
 
-            if model == "S.aureus Epifluorescence":
-                self.max_dim = 50
-                self.model_input = "Membrane+DNA"
-            elif model == "S.aureus SIM":
-                self.max_dim = 100
-                self.model_input = "Membrane+DNA"
 
 
         self.fluor_fov = fluor_fov
