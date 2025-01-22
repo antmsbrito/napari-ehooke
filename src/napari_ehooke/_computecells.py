@@ -14,10 +14,10 @@ from napari_skimage_regionprops import add_table
 
 from .ehooke.cells import CellManager
 
-@magic_factory(Septum_algorithm={"choices":["Isodata","Box"]},Microscope={"choices":["Epi","SIM"]},Report_path={'widget_type':'FileEdit','mode':'d'})
+@magic_factory(Septum_algorithm={"choices":["Isodata","Box"]},Model={"choices":["S.aureus Epifluorescence","S.aureus SIM","custom"]},Custom_model_path={'widget_type':'FileEdit','mode':'r'},Custom_model_input={"choices":["Membrane","DNA","Membrane+DNA"]},Report_path={'widget_type':'FileEdit','mode':'d'})
 def compute_cells(Viewer:"napari.Viewer",
                   Label_Image:"napari.layers.Labels",
-                  Fluor_Image:"napari.layers.Image",
+                  Membrane_Image:"napari.layers.Image",
                   DNA_Image:"napari.layers.Image",
                   Pixel_size:float=1,
                   Inner_mask_thickness:int=4,
@@ -26,9 +26,12 @@ def compute_cells(Viewer:"napari.Viewer",
                   Find_septum:bool=False,
                   Find_open_septum:bool=False,
                   Classify_cell_cycle:bool=False,
-                  Microscope:str="Epi",
-                  Generate_Report:bool=False,
+                  Model="S.aureus Epifluorescence",
+                  Custom_model_path:os.PathLike="",
+                  Custom_model_input="Membrane",
+                  Custom_model_MaxSize:int=50,
                   Compute_Colocalization:bool=False,
+                  Generate_Report:bool=False,
                   Report_path:os.PathLike='',
                   Compute_Heatmap:bool=False,
                   ):
@@ -40,14 +43,17 @@ def compute_cells(Viewer:"napari.Viewer",
               "find_septum":Find_septum,
               "find_openseptum":Find_open_septum,
               "classify_cell_cycle":Classify_cell_cycle,
-              "microscope":Microscope,
+              "model":Model,
+              "custom_model_path":Custom_model_path,
+              "custom_model_input":Custom_model_input,
+              "custom_model_maxsize":Custom_model_MaxSize,
               "generate_report":Generate_Report,
               "report_path":str(Report_path),
               "cell_averager":Compute_Heatmap,
               "coloc":Compute_Colocalization,
               }
 
-    cell_man = CellManager(label_img=Label_Image.data, fluor=Fluor_Image.data, optional=DNA_Image.data, params=params)
+    cell_man = CellManager(label_img=Label_Image.data, fluor=Membrane_Image.data, optional=DNA_Image.data, params=params)
     cell_man.compute_cell_properties()
     
     Label_Image.properties = cell_man.properties
