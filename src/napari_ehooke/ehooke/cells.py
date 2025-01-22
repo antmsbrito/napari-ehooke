@@ -605,17 +605,17 @@ class Cell:
     def set_image(self, fluor, optional):
 
         fluor = img_as_float(fluor)
-        #fluor = exposure.rescale_intensity(fluor)
+        fluor = exposure.rescale_intensity(fluor)
 
         optional = img_as_float(optional)
-        #optional = exposure.rescale_intensity(optional)
+        optional = exposure.rescale_intensity(optional)
 
         perim = self.perim_mask
         axial = self.sept_mask
         cyto = self.cyto_mask
 
         x0, y0, x1, y1 = self.box
-        img = color.gray2rgb(np.zeros((x1 - x0 + 1, 7 * (y1 - y0 + 1))))
+        img = np.zeros((x1 - x0 + 1, 7 * (y1 - y0 + 1)))
         bx0 = 0
         bx1 = x1 - x0 + 1
         by0 = 0
@@ -624,36 +624,36 @@ class Cell:
         # 7 images
 
         # #1 is the fluorescence 
-        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1])
+        img[bx0:bx1, by0:by1] = fluor[x0:x1 + 1, y0:y1 + 1]
         by0 = by0 + y1 - y0 + 1
         by1 = by1 + y1 - y0 + 1
         
         # #2 is the fluorescence segmented
-        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * self.cell_mask)
+        img[bx0:bx1, by0:by1] = fluor[x0:x1 + 1, y0:y1 + 1] * self.cell_mask
         by0 = by0 + y1 - y0 + 1
         by1 = by1 + y1 - y0 + 1
 
         # #3 is the dna
-        img[bx0:bx1, by0:by1] = color.gray2rgb(optional[x0:x1 + 1, y0:y1 + 1])
+        img[bx0:bx1, by0:by1] = optional[x0:x1 + 1, y0:y1 + 1]
         by0 = by0 + y1 - y0 + 1
         by1 = by1 + y1 - y0 + 1
 
         # #4 is the dna segmented
-        img[bx0:bx1, by0:by1] = color.gray2rgb(optional[x0:x1 + 1, y0:y1 + 1] * self.cell_mask)
+        img[bx0:bx1, by0:by1] = optional[x0:x1 + 1, y0:y1 + 1] * self.cell_mask
         by0 = by0 + y1 - y0 + 1
         by1 = by1 + y1 - y0 + 1
 
         # 5,6,7 is perimeter, cytoplasm and septa
-        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * perim)
+        img[bx0:bx1, by0:by1] = fluor[x0:x1 + 1, y0:y1 + 1] * perim
         by0 = by0 + y1 - y0 + 1
         by1 = by1 + y1 - y0 + 1
 
-        img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * cyto)
+        img[bx0:bx1, by0:by1] = fluor[x0:x1 + 1, y0:y1 + 1] * cyto
 
         if self.params['find_septum'] or self.params['find_openseptum']:
             by0 = by0 + y1 - y0 + 1
             by1 = by1 + y1 - y0 + 1
-            img[bx0:bx1, by0:by1] = color.gray2rgb(fluor[x0:x1 + 1, y0:y1 + 1] * axial)
+            img[bx0:bx1, by0:by1] = fluor[x0:x1 + 1, y0:y1 + 1] * axial
 
         self.image = img
 
@@ -696,7 +696,7 @@ class CellManager:
 
         if self.params['classify_cell_cycle']:
             print("Cell cycle...")
-            ccc = CellCycleClassifier(self.fluor_img, self.optional_img, self.params['microscope'])
+            ccc = CellCycleClassifier(self.fluor_img, self.optional_img, self.params['model'], self.params['custom_model_path'], self.params['custom_model_input'],self.params['custom_model_maxsize'])
         if self.params['cell_averager']:
             print("Cell averager...")
             ca = CellAverager(self.fluor_img)
@@ -716,7 +716,7 @@ class CellManager:
             
             if self.params['generate_report']:
                 #CellsImage.append(resize(c.image,(50,350)))
-                All_Cells.append(c)
+                All_Cells.append(c.image)
             if self.params['cell_averager']:
                 ca.align(c)
 
