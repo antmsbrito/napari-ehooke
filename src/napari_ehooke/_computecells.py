@@ -14,7 +14,7 @@ from napari_skimage_regionprops import add_table
 
 from .ehooke.cells import CellManager
 
-@magic_factory(Septum_algorithm={"choices":["Isodata","Box"]},Model={"choices":["S.aureus Epifluorescence","S.aureus SIM","custom"]},Custom_model_path={'widget_type':'FileEdit','mode':'r'},Custom_model_input={"choices":["Membrane","DNA","Membrane+DNA"]},Report_path={'widget_type':'FileEdit','mode':'d'})
+@magic_factory(Septum_algorithm={"choices":["Isodata","Box"]},Model={"choices":["S.aureus DNA+Membrane Epi","S.aureus DNA+Membrane SIM","S.aureus DNA Epi","S.aureus DNA SIM","S.aureus Membrane Epi","S.aureus Membrane SIM","custom"]},Custom_model_path={'widget_type':'FileEdit','mode':'r'},Custom_model_input={"choices":["Membrane","DNA","Membrane+DNA"]},Report_path={'widget_type':'FileEdit','mode':'d'})
 def compute_cells(Viewer:"napari.Viewer",
                   Label_Image:"napari.layers.Labels",
                   Membrane_Image:"napari.layers.Image",
@@ -26,7 +26,7 @@ def compute_cells(Viewer:"napari.Viewer",
                   Find_septum:bool=False,
                   Find_open_septum:bool=False,
                   Classify_cell_cycle:bool=False,
-                  Model="S.aureus Epifluorescence",
+                  Model="S.aureus DNA+Membrane Epi",
                   Custom_model_path:os.PathLike="",
                   Custom_model_input="Membrane",
                   Custom_model_MaxSize:int=50,
