@@ -87,11 +87,11 @@ class ReportManager:
             report.append("\n<h3>Total cells: " + str(len(self.properties['label'])) + "</h3>")
 
             if self.params['classify_cell_cycle']:
-                _,pcounts=np.unique(self.properties['Cell Cycle Phase'], return_counts=True)
+                _,pcounts=np.unique(list(self.properties['Cell Cycle Phase'])+[1,2,3], return_counts=True)
 
-                report.append("\n<h3>Phase 1 cells: " + str(pcounts[0]) + "</h3>")
-                report.append("\n<h3>Phase 2 cells: " + str(pcounts[1]) + "</h3>")
-                report.append("\n<h3>Phase 3 cells: " + str(pcounts[2]) + "</h3>")
+                report.append("\n<h3>Phase 1 cells: " + str(pcounts[0]-1) + "</h3>")
+                report.append("\n<h3>Phase 2 cells: " + str(pcounts[1]-1) + "</h3>")
+                report.append("\n<h3>Phase 3 cells: " + str(pcounts[2]-1) + "</h3>")
             
             if len(selects) > 1:
                 report.extend(selects)
