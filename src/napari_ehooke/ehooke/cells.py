@@ -128,7 +128,7 @@ class Cell:
         mask = self.cell_mask
 
         if algorithm == "Isodata":
-            return self.compute_sept_isodata(mask, thick)
+            return self.compute_sept_isodata(thick)
 
         elif algorithm == "Box":
             return self.compute_sept_box(mask, thick)
@@ -147,7 +147,7 @@ class Cell:
         if algorithm == "Isodata":
             return self.compute_opensept_isodata(mask, thick)
         elif algorithm == "Box":
-            return self.compute_sept_box(mask, thick)
+            return self.compute_sept_box(thick)
 
         else:
             print("Not a a valid algorithm")
