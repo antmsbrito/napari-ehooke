@@ -701,7 +701,14 @@ class CellManager:
             print("Cell averager...")
             ca = CellAverager(self.fluor_img)
 
-        dnathresh = threshold_isodata(self.optional_img[np.nonzero(self.optional_img)])
+        optional_img_cells = self.optional_img * (self.label_img>0).astype(int)
+        histcounts, binedges = np.histogram(optional_img_cells[np.nonzero(optional_img_cells)],bins='auto')
+        maxintensity = binedges[np.argmax(histcounts)+1]
+
+        optimg = self.optional_img.copy()
+        optimg[optimg>=maxintensity] = maxintensity
+        dnathresh = threshold_isodata(optimg[np.nonzero(optimg)])
+
         proptable = pd.DataFrame(regionprops_table(self.label_img,properties=['label','bbox','centroid','orientation','axis_minor_length','axis_major_length','area','perimeter','eccentricity']))
 
         print("Per cell stats...")
