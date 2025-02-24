@@ -6,6 +6,11 @@ from keras.utils import get_file
 from keras.models import load_model
 
 import tensorflow as tf
+from tensorflow.keras import Input
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Activation, Flatten, RandomFlip, RandomRotation
+from tensorflow.keras.layers import Conv2D, MaxPooling2D
+from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 
 import os
 
@@ -16,6 +21,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import tensorflow as tf 
 tf.config.set_visible_devices([], 'GPU')
+
+
 
 class CellCycleClassifier:
 
@@ -32,12 +39,65 @@ class CellCycleClassifier:
         "S.aureus Membrane SIM": {"max_dim": 100, "model_input": "Membrane",'model_path':'https://github.com/antmsbrito/napari-ehooke/blob/main/docs/membrane_only_cellcycle_model.keras?raw=true'},
         }
 
+        depth = 5
+        self.model = Sequential()
+        self.model.add(Input(shape=(100,100,1)))
+
+        self.model.add(Conv2D(16, (3, 3), padding='same'))
+        self.model.add(Activation('relu'))
+
+        if depth > 1:
+            self.model.add(MaxPooling2D(pool_size=(2, 2)))
+
+            if depth > 2:
+                self.model.add(Conv2D(16, (3, 3), padding='same'))
+                self.model.add(Activation('relu'))
+
+                if depth > 3:
+                    self.model.add(MaxPooling2D(pool_size=(2, 2)))
+
+                    if depth > 4:
+                        self.model.add(Conv2D(16, (3, 3), padding='same'))
+                        self.model.add(Activation('relu'))
+
+                        if depth > 5:
+                            self.model.add(MaxPooling2D(pool_size=(2, 2)))
+
+                            if depth > 6:
+                                self.model.add(Conv2D(32, (3, 3), padding='same'))
+                                self.model.add(Activation('relu'))
+
+                                if depth > 7:
+                                    self.model.add(Conv2D(32, (3, 3), padding='same'))
+                                    self.model.add(Activation('relu'))
+
+                                    if depth > 8:
+                                        self.model.add(Conv2D(32, (3, 3), padding='same'))
+                                        self.model.add(Activation('relu'))
+
+                                        if depth > 9:
+                                            self.model.add(Conv2D(32, (3, 3), padding='same'))
+                                            self.model.add(Activation('relu'))
+
+                                            if depth > 10:
+                                                self.model.add(Flatten())
+                                                self.model.add(Dense(100))
+                                                self.model.add(Activation('relu'))
+        if depth <= 10:
+            self.model.add(Flatten())
+            pass
+
+        self.model.add(Dense(1))
+        self.model.add(Activation('sigmoid'))
 
         if model == "custom":
-            self.model = load_model(model_path)
+            self.custom = True
+            #self.model = load_model(model_path)
+            self.model.load_weights(model_path)
             self.max_dim = max_dim
             self.model_input = model_input
         else:
+            self.custom = False
             self.cnnmodel = get_file(model, self.prebuilts_config[model]["model_path"])
             self.model = load_model(self.cnnmodel)
             self.max_dim = self.prebuilts_config[model]["max_dim"]
@@ -127,5 +187,8 @@ class CellCycleClassifier:
             pred = self.model.predict(optional_img.reshape(-1, 100, 100, 1), verbose=0)
         elif self.model_input == "Membrane+DNA":    
             pred = self.model.predict(np.concatenate((fluor_img, optional_img), axis=1).reshape(-1, 100, 200, 1), verbose=0)
-        
-        return np.argmax(pred,axis=-1)[0] + 1
+
+        if self.custom and len(pred[0])==1:
+            return int(pred[0][0] > 0.5)+1
+        else:
+            return np.argmax(pred,axis=-1)[0] + 1
